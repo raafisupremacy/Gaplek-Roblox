@@ -1,8 +1,10 @@
-# Project place file
-/Gaplek Roblox.rbxlx
+# Rojo
+.rojo/
 
-# Roblox Studio lock files
-/*.rbxlx.lock
-/*.rbxl.lock
+# Roblox Studio
+*.rbxlx.lock
+*.rbxl.lock
 
-sourcemap.json
+# OS
+Thumbs.db
+.DS_Store

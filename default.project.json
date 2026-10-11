@@ -1,71 +1,45 @@
 {
-  "name": "Gaplek Roblox",
+  "name": "PosGaplek",
   "tree": {
     "$className": "DataModel",
-
     "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
       "Shared": {
         "$path": "src/shared"
       }
     },
-
     "ServerScriptService": {
+      "$className": "ServerScriptService",
       "Server": {
         "$path": "src/server"
       }
     },
-
     "StarterPlayer": {
+      "$className": "StarterPlayer",
       "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
         "Client": {
           "$path": "src/client"
         }
       }
     },
-
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "Tests": {
+        "$path": "src/tests"
+      },
+      "Dev": {
+        "$path": "src/dev"
+      }
+    },
     "Workspace": {
       "$properties": {
-        "FilteringEnabled": true
-      },
-      "Baseplate": {
-        "$className": "Part",
-        "$properties": {
-          "Anchored": true,
-          "Color": [
-            0.38823,
-            0.37254,
-            0.38823
-          ],
-          "Locked": true,
-          "Position": [
-            0,
-            -10,
-            0
-          ],
-          "Size": [
-            512,
-            20,
-            512
-          ]
-        }
+        "StreamingEnabled": false
       }
     },
-    "Lighting": {
+    "TextChatService": {
       "$properties": {
-        "Ambient": [
-          0,
-          0,
-          0
-        ],
-        "Brightness": 2,
-        "GlobalShadows": true,
-        "Outlines": false,
-        "Technology": "Voxel"
-      }
-    },
-    "SoundService": {
-      "$properties": {
-        "RespectFilteringEnabled": true
+        "ChatVersion": "TextChatService"
       }
     }
   }
