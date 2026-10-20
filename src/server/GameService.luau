@@ -53,6 +53,7 @@ export type ClientTilePayload = {
 
 export type GameSession = {
 	tableId: number,
+	sessionId: number,
 	currentGame: GameState?,
 	currentRound: RoundState?,
 	isMatchRunning: boolean,
@@ -61,6 +62,7 @@ export type GameSession = {
 	tileToToken: { [number]: { [string]: string } },
 	knownPassedEnds: { [number]: { [number]: boolean } },
 	afkStrikes: { [number]: number },
+	botLastEmoteTime: { [number]: number },
 	turnThread: thread?,
 	turnDeadline: number,
 }
@@ -74,6 +76,7 @@ local sessions: { [number]: GameSession } = {}
 local function initSession(tableId: number): GameSession
 	return {
 		tableId = tableId,
+		sessionId = 0,
 		currentGame = nil,
 		currentRound = nil,
 		isMatchRunning = false,
@@ -82,6 +85,7 @@ local function initSession(tableId: number): GameSession
 		tileToToken = { [1] = {}, [2] = {}, [3] = {}, [4] = {} },
 		knownPassedEnds = { [1] = {}, [2] = {}, [3] = {}, [4] = {} },
 		afkStrikes = { [1] = 0, [2] = 0, [3] = 0, [4] = 0 },
+		botLastEmoteTime = { [1] = -999, [2] = -999, [3] = -999, [4] = -999 },
 		turnThread = nil,
 		turnDeadline = 0,
 	}
@@ -125,10 +129,37 @@ local function broadcastToTable(tableId: number, remoteName: string, ...: any)
 
 	for s = 1, GameConfig.TOTAL_SEATS do
 		local occ = occupants[s]
-		if occ and typeof(occ) == "Instance" and occ:IsA("Player") then
-			rem:FireClient(occ, ...)
+		if occ then
+			if typeof(occ) == "Instance" and occ:IsA("Player") then
+				rem:FireClient(occ, ...)
+			elseif type(occ) == "table" and type((occ :: any)._onRemoteEvent) == "function" then
+				(occ :: any)._onRemoteEvent(remoteName, ...)
+			end
 		end
 	end
+end
+
+--[=[
+	Memicu emote untuk kursi bot di meja tertentu dengan menghormati FeelConfig.EMOTE.BOT_COOLDOWN.
+]=]
+function GameService.TriggerBotEmote(seat: number, emoteId: string, tableId: number?, nowTime: number?): boolean
+	local tid = tableId or 1
+	local session = getSession(tid)
+	local TableService = getTableService()
+	if not TableService.IsSeatBot(seat, tid) then
+		return false
+	end
+	if not Remotes.validateWhitelist(emoteId, FeelConfig.EMOTE.ORDER) then
+		return false
+	end
+	local now = nowTime or os.clock()
+	local lastTime = session.botLastEmoteTime[seat] or -999
+	if (now - lastTime) < FeelConfig.EMOTE.BOT_COOLDOWN then
+		return false
+	end
+	session.botLastEmoteTime[seat] = now
+	broadcastToTable(tid, "EmotePlayed", seat, emoteId)
+	return true
 end
 
 -- ====================================================================
@@ -187,18 +218,31 @@ end
 
 --[=[
 	Mengirimkan StateSync ke satu pemain tertentu di meja tempatnya duduk.
+	Menjamin isolasi meja: tidak pernah mengirim state meja A ke pemain di meja B.
 ]=]
 function GameService.SendStateSync(player: Player, tableId: number?)
-	if typeof(player) ~= "Instance" or not player:IsA("Player") then
+	local isRealPlayer = (typeof(player) == "Instance" and player:IsA("Player"))
+	local isMockPlayer = (type(player) == "table" and type((player :: any)._onRemoteEvent) == "function")
+	if not isRealPlayer and not isMockPlayer then
 		return
 	end
 
 	local TableService = getTableService()
-	local tid = tableId or TableService.GetPlayerTable(player) or 1
+	local playerTable = TableService.GetPlayerTable(player)
 	local seat = TableService.GetPlayerSeat(player)
-	if not seat then return end
+	if not playerTable or not seat then
+		return
+	end
+	if tableId ~= nil and tableId ~= playerTable then
+		return
+	end
 
+	local tid = playerTable
 	local session = getSession(tid)
+	if TableService.GetOccupant(seat, tid) ~= player then
+		return
+	end
+
 	local privateHand = getClientPrivateHand(session, seat)
 	local remaining = if session.currentRound then getRemainingCounts(session.currentRound) else { [1] = 0, [2] = 0, [3] = 0, [4] = 0 }
 	local boardPlaced = if session.currentRound then session.currentRound.board.placed else {}
@@ -210,22 +254,85 @@ function GameService.SendStateSync(player: Player, tableId: number?)
 	local mode = if session.currentGame then session.currentGame.mode else TableService.GetMode(tid)
 	local isHost = (TableService.GetHost(tid) == player)
 
-	Remotes.getEvent("StateSync"):FireClient(
-		player,
-		seat,
-		privateHand,
-		remaining,
-		boardPlaced,
-		leftEnd,
-		rightEnd,
-		currentSeat,
-		passStreak,
-		scores,
-		mode,
-		session.currentPhase,
-		isHost,
-		session.turnDeadline
-	)
+	if isRealPlayer then
+		Remotes.getEvent("StateSync"):FireClient(
+			player,
+			seat,
+			privateHand,
+			remaining,
+			boardPlaced,
+			leftEnd,
+			rightEnd,
+			currentSeat,
+			passStreak,
+			scores,
+			mode,
+			session.currentPhase,
+			isHost,
+			session.turnDeadline
+		)
+	elseif isMockPlayer then
+		(player :: any)._onRemoteEvent(
+			"StateSync",
+			seat,
+			privateHand,
+			remaining,
+			boardPlaced,
+			leftEnd,
+			rightEnd,
+			currentSeat,
+			passStreak,
+			scores,
+			mode,
+			session.currentPhase,
+			isHost,
+			session.turnDeadline
+		)
+	end
+end
+
+--[=[
+	Mengirimkan StateSync bersih (kosong) ke pemain yang baru berdiri / meninggalkan meja.
+]=]
+function GameService.SendClearStateSync(player: Player)
+	local isRealPlayer = (typeof(player) == "Instance" and player:IsA("Player"))
+	local isMockPlayer = (type(player) == "table" and type((player :: any)._onRemoteEvent) == "function")
+	local emptyCounts = { [1] = 0, [2] = 0, [3] = 0, [4] = 0 }
+	if isRealPlayer then
+		Remotes.getEvent("StateSync"):FireClient(
+			player,
+			0,
+			{},
+			emptyCounts,
+			{},
+			nil,
+			nil,
+			0,
+			0,
+			{},
+			"2v2",
+			"idle",
+			false,
+			0
+		)
+	elseif isMockPlayer then
+		(player :: any)._onRemoteEvent(
+			"StateSync",
+			0,
+			{},
+			emptyCounts,
+			{},
+			nil,
+			nil,
+			0,
+			0,
+			{},
+			"2v2",
+			"idle",
+			false,
+			0
+		)
+	end
 end
 
 --[=[
@@ -236,7 +343,7 @@ function GameService.SendStateSyncAll(tableId: number?)
 	local TableService = getTableService()
 	for s = 1, GameConfig.TOTAL_SEATS do
 		local occupant = TableService.GetOccupant(s, tid)
-		if occupant and not TableService.IsSeatBot(s, tid) and typeof(occupant) == "Instance" and occupant:IsA("Player") then
+		if occupant and not TableService.IsSeatBot(s, tid) then
 			GameService.SendStateSync(occupant, tid)
 		end
 	end
@@ -259,9 +366,10 @@ end
 -- ====================================================================
 
 local function stopTurnTimer(session: GameSession)
-	if session.turnThread then
-		task.cancel(session.turnThread)
-		session.turnThread = nil
+	local th = session.turnThread
+	session.turnThread = nil
+	if th and th ~= coroutine.running() then
+		pcall(task.cancel, th)
 	end
 end
 
@@ -412,8 +520,14 @@ startNextRound = function(session: GameSession)
 	-- Kirim StateSync khusus hand masing-masing pemain di meja
 	GameService.SendStateSyncAll(session.tableId)
 
+	local mySessionId = session.sessionId
+
 	-- Pacing pembagian kartu
 	waitPacing(FeelConfig.DURATIONS.DEAL_INTERVAL * 7 + 0.3)
+
+	if not session.isMatchRunning or session.sessionId ~= mySessionId then
+		return
+	end
 
 	-- Mulai giliran pertama (pembuka)
 	runTurnCycle(session)
@@ -480,18 +594,35 @@ local function handleRoundEnd(session: GameSession, reason: "emptied" | "blocked
 		session.currentGame.scores
 	)
 
+	-- Reaksi Kontekstual Bot saat akhir ronde (Grup C — BOT_SPEC §3, GAME_FEEL §4)
+	if not fastMode and roundResult.winnerSide ~= nil then
+		local TableService = getTableService()
+		local tid = session.tableId
+		for s = 1, GameConfig.TOTAL_SEATS do
+			if TableService.IsSeatBot(s, tid) and serverRng:NextNumber() < FeelConfig.CHARACTER_FEEL.BOT_ROUND_END_REACT_CHANCE then
+				local seatSide = DominoLogic.SideOf(session.currentGame.mode, s)
+				local isWinner = (seatSide == roundResult.winnerSide)
+				local reactEmote = if isWinner
+					then (if serverRng:NextInteger(1, 2) == 1 then "clap" else "laugh")
+					else (if serverRng:NextInteger(1, 2) == 1 then "sad" else "yah")
+				GameService.TriggerBotEmote(s, reactEmote, tid)
+			end
+		end
+	end
+
 	-- Cek apakah game selesai (skor salah satu pihak mencapai >= 100)
-	local gameResult = DominoLogic.CheckGameOver(session.currentGame)
-	if gameResult.isOver then
+	local gameResult = DominoLogic.CheckGameEnd(session.currentGame)
+	if gameResult.finished then
 		session.currentPhase = "game_ended"
 		session.isMatchRunning = false
-		Logger.info("GameService", string.format("[Meja %d] Pertandingan Selesai! Pihak Kalah: %s (Skor: %d). Ranking pemenang ditentukan.",
-			session.tableId, tostring(gameResult.loserSide), session.currentGame.scores[gameResult.loserSide or 1]))
+		local primaryLoser = gameResult.losers[1] or 1
+		Logger.info("GameService", string.format("[Meja %d] Pertandingan Selesai! Pihak Kalah: %s (Skor: %d).",
+			session.tableId, tostring(primaryLoser), session.currentGame.scores[primaryLoser] or 100))
 
 		broadcastToTable(session.tableId, "GameEnded",
-			gameResult.loserSide or 0,
-			session.currentGame.scores,
-			gameResult.rankings
+			gameResult.losers,
+			gameResult.ranking,
+			session.currentGame.scores
 		)
 
 		local TableService = getTableService()
@@ -553,8 +684,17 @@ function GameService.PlayMove(seat: number, tile: Tile, side: Side, tableId: num
 		remainingCount
 	)
 
+	-- Jika Bot memasang kartu balak dan bukan fastMode, beri peluang emote kontekstual
+	local TableService = getTableService()
+	if not fastMode and isDouble and TableService.IsSeatBot(seat, tid) then
+		if serverRng:NextNumber() < FeelConfig.EMOTE.BOT_TRIGGER_CHANCE then
+			local botEmote = if serverRng:NextInteger(1, 2) == 1 then "laugh" else "taunt"
+			GameService.TriggerBotEmote(seat, botEmote, tid)
+		end
+	end
+
 	-- Pacing animasi pemasangan/hentak kartu
-	local waitDuration = if isDouble then FeelConfig.SLAM_TOTAL_TIME else FeelConfig.DURATIONS.PLACE_NORMAL
+	local waitDuration = if isDouble then FeelConfig.SLAM_TOTAL_TIME else (FeelConfig.DURATIONS.PLACE_NORMAL or 0.25)
 	waitPacing(waitDuration)
 
 	-- Periksa kondisi kemenangan atau ronde buntu
@@ -595,7 +735,31 @@ function GameService.PassTurn(seat: number, tableId: number?): (boolean, string?
 	-- Broadcast PlayerPassed ke pemain meja
 	broadcastToTable(tid, "PlayerPassed", seat, session.currentRound.passStreak)
 
-	waitPacing(FeelConfig.DURATIONS.PASS_KNOCK + 0.1)
+	-- Jika Bot terpaksa pas dan bukan fastMode, beri peluang emote "yah" / "sad"
+	local TableService = getTableService()
+	if not fastMode then
+		if TableService.IsSeatBot(seat, tid) then
+			if serverRng:NextNumber() < FeelConfig.EMOTE.BOT_TRIGGER_CHANCE then
+				local passEmote = if serverRng:NextInteger(1, 2) == 1 then "yah" else "sad"
+				GameService.TriggerBotEmote(seat, passEmote, tid)
+			end
+		end
+
+		-- Bot lawan menertawakan pemain/bot yang terpaksa pas (BOT_SPEC.md §3: "tertawa saat lawan pas")
+		local mode = if session.currentGame then session.currentGame.mode else "2v2"
+		local passerSide = DominoLogic.SideOf(mode, seat)
+		for otherSeat = 1, GameConfig.TOTAL_SEATS do
+			if otherSeat ~= seat and TableService.IsSeatBot(otherSeat, tid) then
+				local otherSide = DominoLogic.SideOf(mode, otherSeat)
+				if otherSide ~= passerSide and serverRng:NextNumber() < FeelConfig.CHARACTER_FEEL.BOT_OPPONENT_PASS_LAUGH_CHANCE then
+					GameService.TriggerBotEmote(otherSeat, "laugh", tid)
+					break
+				end
+			end
+		end
+	end
+
+	waitPacing((FeelConfig.DURATIONS.KNOCK_PASS or 0.6) + 0.1)
 
 	local endCondition = DominoLogic.CheckRoundEnd(session.currentRound)
 	if endCondition then
@@ -641,7 +805,9 @@ function GameService.StartMatch(mode: Mode, arg2: any?, arg3: any?): (boolean, s
 	-- Pastikan kursi kosong terisi oleh Bot
 	TableService.FillEmptySeatsWithBots("normal", tid)
 
+	session.sessionId += 1
 	session.currentGame = DominoLogic.NewGame(mode)
+	session.currentGame.roundNumber = 0 -- startNextRound akan menaikkannya ke 1 untuk ronde pertama
 	session.isMatchRunning = true
 	session.currentPhase = "dealing"
 
@@ -664,12 +830,26 @@ function GameService.StopMatch(tableId: number?)
 	local session = getSession(tid)
 
 	stopTurnTimer(session)
+	session.sessionId += 1
 	session.isMatchRunning = false
 	session.currentPhase = "idle"
 	session.currentGame = nil
 	session.currentRound = nil
+	for s = 1, GameConfig.TOTAL_SEATS do
+		session.botLastEmoteTime[s] = -999
+	end
 	resetTokens(session)
 	Logger.info("GameService", string.format("[Meja %d] Match dihentikan.", tid))
+end
+
+--[=[
+	Dipanggil saat kursi pemain yang sedang gilirannya diambil alih oleh Bot (berdiri/keluar).
+]=]
+function GameService.OnSeatReplacedByBot(tableId: number, seatIndex: number)
+	local session = getSession(tableId)
+	if session.isMatchRunning and session.currentRound and session.currentRound.currentSeat == seatIndex then
+		runTurnCycle(session)
+	end
 end
 
 -- ====================================================================
@@ -724,13 +904,14 @@ function GameService.Init()
 	Remotes.getEvent("RequestEmote").OnServerEvent:Connect(function(player, emoteId)
 		if not Remotes.checkRateLimit(player, "RequestEmote") then return end
 		if not Remotes.validateString(emoteId, 1, 20) then return end
+		if not Remotes.validateWhitelist(emoteId, FeelConfig.EMOTE.ORDER) then return end
 
 		local TableService = getTableService()
-		local tid = TableService.GetPlayerTable(player) or 1
+		local tid = TableService.GetPlayerTable(player)
 		local seat = TableService.GetPlayerSeat(player)
-		if not seat then return end
+		if not tid or not seat then return end
 
-		-- Broadcast EmotePlayed ke meja pemain
+		-- Broadcast EmotePlayed hanya ke pemain di meja yang sama
 		broadcastToTable(tid, "EmotePlayed", seat, emoteId)
 	end)
 

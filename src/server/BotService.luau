@@ -189,4 +189,21 @@ function BotService.Decide(
 	}
 end
 
+--[=[
+	Wrapper kompatibilitas untuk GameService: DecideMove.
+]=]
+function BotService.DecideMove(
+	seat: number,
+	hand: { Tile },
+	publicView: PublicView,
+	level: BotLevel?,
+	rng: RngInterface
+): BotDecision
+	local profile: BotProfile = {
+		seat = seat,
+		level = level or "normal",
+	}
+	return BotService.Decide(profile, publicView, hand, rng)
+end
+
 return BotService

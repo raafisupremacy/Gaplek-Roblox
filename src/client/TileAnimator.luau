@@ -112,8 +112,7 @@ local function shakeCoffee(intensity: number)
 	if tier <= FeelConfig.QUALITY.LOW then return end
 
 	local posRonda = workspace:FindFirstChild("PosRonda")
-	local tbl = posRonda and posRonda:FindFirstChild("Table")
-	local coffeeCup = tbl and tbl:FindFirstChild("GelasKopi") :: BasePart?
+	local coffeeCup = posRonda and posRonda:FindFirstChild("GelasKopi", true) :: BasePart?
 	if not coffeeCup then return end
 
 	local origCF = coffeeCup.CFrame
@@ -145,7 +144,7 @@ end
 ]=]
 local function swayLamp(swayDeg: number)
 	local posRonda = workspace:FindFirstChild("PosRonda")
-	local bulb = posRonda and posRonda:FindFirstChild("Bohlam") :: BasePart?
+	local bulb = posRonda and posRonda:FindFirstChild("Bohlam", true) :: BasePart?
 	if not bulb then return end
 
 	local origCF = bulb.CFrame
@@ -170,6 +169,63 @@ local function swayLamp(swayDeg: number)
 end
 
 --[=[
+	Mengekspos ayunan bohlam lampu pos ronda untuk dipakai sistem feel lain (mis. skor naik / giliran).
+]=]
+function TileAnimator.SwayLamp(swayDeg: number?)
+	swayLamp(swayDeg or 1.2)
+end
+
+--[=[
+	Mengedipkan lampu meja pos ronda sekali (reaksi lingkungan saat peringatan waktu <= 10 detik).
+]=]
+function TileAnimator.FlickerLamp(dipRatio: number?, duration: number?)
+	local posRonda = workspace:FindFirstChild("PosRonda")
+	local bulb = posRonda and posRonda:FindFirstChild("Bohlam", true) :: BasePart?
+	if not bulb then return end
+
+	local pointLight = bulb:FindFirstChildOfClass("PointLight")
+	local origColor = bulb.Color
+	local dip = math.clamp(dipRatio or FeelConfig.UI_FEEL.LAMP_FLICKER_BRIGHTNESS_DIP, 0.1, 0.9)
+	local dur = duration or FeelConfig.UI_FEEL.LAMP_FLICKER_DURATION
+
+	local dimColor = origColor:Lerp(Color3.fromRGB(90, 70, 40), dip)
+	bulb.Color = dimColor
+
+	local origBrightness = if pointLight then pointLight.Brightness else nil
+	if pointLight and origBrightness then
+		pointLight.Brightness = origBrightness * (1.0 - dip)
+	end
+
+	task.delay(dur, function()
+		if bulb and bulb.Parent then
+			bulb.Color = origColor
+		end
+		if pointLight and pointLight.Parent and origBrightness then
+			pointLight.Brightness = origBrightness
+		end
+	end)
+end
+
+--[=[
+	Memancarkan kepulan uap tipis dari gelas kopi meja saat aksi idle seruput kopi (Grup C).
+]=]
+function TileAnimator.EmitCoffeeSteam(burstCount: number?)
+	local tier = FeelConfig.USER_SETTINGS.QUALITY_TIER or FeelConfig.QUALITY.HIGH
+	if tier <= FeelConfig.QUALITY.LOW then
+		return
+	end
+	local posRonda = workspace:FindFirstChild("PosRonda")
+	local coffeeCup = posRonda and posRonda:FindFirstChild("GelasKopi", true) :: BasePart?
+	if not coffeeCup then
+		return
+	end
+
+	local count = burstCount or FeelConfig.CHARACTER_FEEL.COFFEE_STEAM_BURST
+	local actualCount = if tier == FeelConfig.QUALITY.MEDIUM then math.max(2, math.floor(count * 0.5)) else count
+	spawnDust(coffeeCup.Position + Vector3.new(0, 0.25, 0), actualCount)
+end
+
+--[=[
 	Menggetarkan kartu-kartu lain di sekitar meja dan rak saat ada hentakan.
 ]=]
 function TileAnimator.ShakeOtherTiles(excludeTile: BasePart?, centerPos: Vector3, maxLift: number)
@@ -177,7 +233,7 @@ function TileAnimator.ShakeOtherTiles(excludeTile: BasePart?, centerPos: Vector3
 	if tier <= FeelConfig.QUALITY.LOW then return end
 
 	local radius = FeelConfig.ENVIRONMENT.OTHER_TILES_RADIUS
-	local boardContainer = workspace:FindFirstChild("GameBoardTiles")
+	local boardContainer = workspace:FindFirstChild("TilesContainer") or workspace:FindFirstChild("GameBoardTiles")
 	if not boardContainer then return end
 
 	for _, child in ipairs(boardContainer:GetChildren()) do

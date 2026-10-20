@@ -247,6 +247,61 @@ function SoundManager.PlayShuffle(target: (Instance | Vector3)?): Sound?
 end
 
 --[=[
+	Memutar suara ekspresi emote berdasarkan emoteId ("laugh", "angry", "sad", "yah", "clap", "taunt").
+]=]
+function SoundManager.PlayEmote(emoteId: string, target: (Instance | Vector3)?): Sound?
+	local item = FeelConfig.EMOTE and FeelConfig.EMOTE.ITEMS and FeelConfig.EMOTE.ITEMS[emoteId]
+	local slot = if item and item.soundSlot then item.soundSlot else ("emote_" .. tostring(emoteId))
+	return SoundManager.Play(slot, target, 0.8, 1.0)
+end
+
+-- ====================================================================
+-- PEMUTAR SFX KHUSUS GRUP B (KAMERA & UI)
+-- ====================================================================
+
+--[=[
+	Memutar suara notifikasi pergantian giliran ("turn_ting" - lonceng/ketukan bambu halus).
+]=]
+function SoundManager.PlayTurnTing(target: (Instance | Vector3)?): Sound?
+	return SoundManager.Play("turn_ting", target, 0.65, 1.0)
+end
+
+--[=[
+	Memutar suara detak peringatan waktu saat sisa <= 10 detik ("timer_tick").
+]=]
+function SoundManager.PlayTimerTick(isCritical: boolean?): Sound?
+	local pitch = if isCritical then 1.12 else 1.0
+	local vol = if isCritical then 0.65 else 0.50
+	return SoundManager.Play("timer_tick", nil, vol, pitch)
+end
+
+--[=[
+	Memutar suara detak angka skor saat menghitung naik ("score_tick").
+]=]
+function SoundManager.PlayScoreTick(stepRatio: number?): Sound?
+	local ratio = math.clamp(stepRatio or 0.5, 0, 1)
+	local pitch = 0.95 + ratio * 0.20 -- Pitch naik bertahap seiring angka naik
+	return SoundManager.Play("score_tick", nil, 0.55, pitch)
+end
+
+-- ====================================================================
+-- PEMUTAR SFX KHUSUS GRUP C (IDLE KARAKTER & REAKSI)
+-- ====================================================================
+
+--[=[
+	Memutar suara lembut saat karakter melakukan variasi idle ("sip_coffee", "fan_self", "scratch_head").
+]=]
+function SoundManager.PlayIdleAction(actionName: string, target: (Instance | Vector3)?): Sound?
+	if actionName == "sip_coffee" then
+		return SoundManager.Play("sit", target, 0.45, 1.15)
+	elseif actionName == "fan_self" then
+		return SoundManager.Play("amb_wind", target, 0.40, 1.25)
+	else
+		return SoundManager.Play("tile_hover", target, 0.35, 0.95)
+	end
+end
+
+--[=[
 	Membersihkan seluruh sound pool saat teardown.
 ]=]
 function SoundManager.Destroy()

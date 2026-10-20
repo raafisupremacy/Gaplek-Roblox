@@ -1,18 +1,19 @@
 --!strict
 --[=[
 	BoardLayoutTests.luau
-	Unit test komprehensif untuk modul BoardLayout (M2).
+	Unit test komprehensif untuk modul BoardLayout (M2 & Stabilisasi v2 Langkah 1c).
 	
 	Mencakup pengujian:
 	- U01: Konsistensi deterministik (input sama -> CFrame sama persis).
-	- U02: Uji OBB overlap pada skenario 28 kartu terburuk (semua di satu sisi).
+	- U02: Uji OBB overlap & batas meja nyata pada skenario 28 kartu terburuk (semua di satu sisi).
 	- U03: Uji OBB overlap pada skenario banyak balak berurutan melintang.
-	- U04: Simulasi fuzz 1.000 permainan acak penuh dari DominoLogic (0 overlap).
-	- U05: Verifikasi jangkauan toss dari keempat kursi (<= 4.0 studs).
-	- U06: Verifikasi kemurnian modul (nol Instance di BoardLayout).
+	- U04: Simulasi fuzz 1.000 permainan acak penuh dari DominoLogic (0 overlap, dalam batas konfigurasi meja nyata).
+	- U05: Verifikasi jangkauan toss dari keempat kursi nyata (`BoardLayout.GetSeatDistance()`).
+	- U06: Tes ketat anti-overhang daun meja (`NoTileOverhangsTableTop`): gagal bila ada sudut/tepi kartu yang melewati daun meja nyata (`BoardLayout.GetTableHalfExtent()` dan `TableTop.Size` di Workspace).
 ]=]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
 
 local BoardLayout = require(sharedFolder:WaitForChild("BoardLayout"))
@@ -24,6 +25,20 @@ type Placed = Types.Placed
 type Tile = Types.Tile
 
 local BoardLayoutTests = {}
+
+-- Helper menghitung tepi luar terjauh (outer edge X dan Z) dari sekumpulan CFrame kartu
+local function computeMaxOuterEdges(cframes: { CFrame }, tileSize: Vector3): (number, number)
+	local maxOuterX = 0
+	local maxOuterZ = 0
+	for _, cf in ipairs(cframes) do
+		local extX, extZ = BoardLayout.GetTileWorldHalfExtents(cf, tileSize)
+		local edgeX = math.abs(cf.Position.X) + extX
+		local edgeZ = math.abs(cf.Position.Z) + extZ
+		if edgeX > maxOuterX then maxOuterX = edgeX end
+		if edgeZ > maxOuterZ then maxOuterZ = edgeZ end
+	end
+	return maxOuterX, maxOuterZ
+end
 
 function BoardLayoutTests.RunAll(): (number, number, { string })
 	local passed = 0
@@ -41,6 +56,14 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 			warn(err)
 		end
 	end
+
+	-- Ambil batas ukuran meja dan zona papan langsung dari konfigurasi (bukan angka ketik manual)
+	local tableHalfExtent = BoardLayout.GetTableHalfExtent()
+	local boardZone = BoardLayout.GetBoardZone()
+	local zoneHalfX = boardZone.X / 2
+	local zoneHalfZ = boardZone.Z / 2
+	local seatDistance = BoardLayout.GetSeatDistance()
+	local tileSize = BoardLayout.GetTileSize()
 
 	-- U01: Deterministik
 	do
@@ -85,7 +108,6 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 		end
 
 		local cframes = BoardLayout.Calculate(worstPlaced, 0)
-		local tileSize = BoardLayout.GetTileSize()
 		local overlaps = 0
 
 		for i = 1, #worstPlaced do
@@ -96,12 +118,7 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 			end
 		end
 
-		local maxX = 0
-		local maxZ = 0
-		for _, cf in ipairs(cframes) do
-			if math.abs(cf.Position.X) > maxX then maxX = math.abs(cf.Position.X) end
-			if math.abs(cf.Position.Z) > maxZ then maxZ = math.abs(cf.Position.Z) end
-		end
+		local maxOuterX, maxOuterZ = computeMaxOuterEdges(cframes, tileSize)
 
 		assertTest(
 			"U02_WorstCase28Cards_NoOverlap",
@@ -110,8 +127,8 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 		)
 		assertTest(
 			"U02_WorstCase28Cards_WithinTableBounds",
-			maxX <= 4.5 and maxZ <= 4.5,
-			string.format("Meja terlampaui: maxX=%.2f, maxZ=%.2f", maxX, maxZ)
+			maxOuterX <= tableHalfExtent and maxOuterZ <= tableHalfExtent and maxOuterX <= zoneHalfX + 0.01 and maxOuterZ <= zoneHalfZ + 0.01,
+			string.format("Meja/Zona terlampaui: maxOuterX=%.3f (tepi=%.2f), maxOuterZ=%.3f (tepi=%.2f)", maxOuterX, tableHalfExtent, maxOuterZ, tableHalfExtent)
 		)
 	end
 
@@ -131,7 +148,6 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 		end
 
 		local cframes = BoardLayout.Calculate(doubleHeavyPlaced, 0)
-		local tileSize = BoardLayout.GetTileSize()
 		local overlaps = 0
 
 		for i = 1, #doubleHeavyPlaced do
@@ -149,15 +165,23 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 		)
 	end
 
-	-- U04: Simulasi fuzz 1.000 permainan sah acak
+	-- U04: Simulasi fuzz 1.000 permainan sah acak + U06: Tes ketat 0 kartu di luar daun meja nyata
 	do
+		local WorldBuilder = require(ServerScriptService.Server.WorldBuilder)
+		WorldBuilder.Build()
+		local posRonda = workspace:FindFirstChild("PosRonda")
+		local tbl = posRonda and posRonda:FindFirstChild("Table")
+		local tableTop = tbl and tbl:FindFirstChild("TableTop") :: BasePart?
+		local actualTableHalfX = if tableTop then tableTop.Size.X / 2 else tableHalfExtent
+		local actualTableHalfZ = if tableTop then tableTop.Size.Z / 2 else tableHalfExtent
+
 		local rng = Rng.deterministic(554433)
 		local totalSimGames = 1000
 		local fuzzOverlaps = 0
+		local overhangCardsCount = 0
 		local totalTiles = 0
-		local maxSimReachX = 0
-		local maxSimReachZ = 0
-		local tileSize = BoardLayout.GetTileSize()
+		local maxSimOuterX = 0
+		local maxSimOuterZ = 0
 
 		for _ = 1, totalSimGames do
 			local gameObj = DominoLogic.NewGame("solo")
@@ -188,9 +212,16 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 				local cframes = BoardLayout.Calculate(placed, 0)
 
 				for i = 1, #placed do
-					local pos = cframes[i].Position
-					if math.abs(pos.X) > maxSimReachX then maxSimReachX = math.abs(pos.X) end
-					if math.abs(pos.Z) > maxSimReachZ then maxSimReachZ = math.abs(pos.Z) end
+					local extX, extZ = BoardLayout.GetTileWorldHalfExtents(cframes[i], tileSize)
+					local edgeX = math.abs(cframes[i].Position.X) + extX
+					local edgeZ = math.abs(cframes[i].Position.Z) + extZ
+
+					if edgeX > maxSimOuterX then maxSimOuterX = edgeX end
+					if edgeZ > maxSimOuterZ then maxSimOuterZ = edgeZ end
+
+					if edgeX > actualTableHalfX or edgeZ > actualTableHalfZ then
+						overhangCardsCount += 1
+					end
 
 					for j = i + 1, #placed do
 						if BoardLayout.CheckSATOverlap(cframes[i], tileSize, cframes[j], tileSize) then
@@ -208,19 +239,33 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 		)
 		assertTest(
 			"U04_Fuzz1000Games_BoundsValid",
-			maxSimReachX <= 3.5 and maxSimReachZ <= 4.0,
-			string.format("Batas terlampaui: maxX=%.2f, maxZ=%.2f", maxSimReachX, maxSimReachZ)
+			maxSimOuterX <= zoneHalfX + 0.01 and maxSimOuterZ <= zoneHalfZ + 0.01,
+			string.format("Batas zona papan terlampaui: maxOuterX=%.3f (zona=%.2f), maxOuterZ=%.3f (zona=%.2f)", maxSimOuterX, zoneHalfX, maxSimOuterZ, zoneHalfZ)
+		)
+		assertTest(
+			"U06_NoTileOverhangsTableTop",
+			overhangCardsCount == 0
+				and math.abs(actualTableHalfX - tableHalfExtent) < 0.001
+				and maxSimOuterX <= actualTableHalfX
+				and maxSimOuterZ <= actualTableHalfZ,
+			string.format(
+				"Overhang=%d kartu; maxOuter=(%.3f, %.3f) vs TableTop half=(%.2f, %.2f)",
+				overhangCardsCount,
+				maxSimOuterX,
+				maxSimOuterZ,
+				actualTableHalfX,
+				actualTableHalfZ
+			)
 		)
 	end
 
-	-- U05: Verifikasi jangkauan toss dari keempat kursi
+	-- U05: Verifikasi jangkauan toss dari keempat kursi nyata (`seatDistance`)
 	do
-		-- Posisi 4 kursi duduk di meja (radius jarak ~4.2 - 4.5 studs dari tengah)
 		local seatPositions = {
-			[1] = Vector3.new(0, 0, 4.3),
-			[2] = Vector3.new(4.3, 0, 0),
-			[3] = Vector3.new(0, 0, -4.3),
-			[4] = Vector3.new(-4.3, 0, 0),
+			[1] = Vector3.new(0, 0, seatDistance),
+			[2] = Vector3.new(seatDistance, 0, 0),
+			[3] = Vector3.new(0, 0, -seatDistance),
+			[4] = Vector3.new(-seatDistance, 0, 0),
 		}
 
 		local worstPlaced: { Placed } = {
@@ -239,7 +284,6 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 		local cframes = BoardLayout.Calculate(worstPlaced, 0)
 		local maxTossObserved = 0
 
-		-- Cek jarak setiap kartu ke kursi terdekatnya
 		for _, cf in ipairs(cframes) do
 			local p = cf.Position
 			local minDistToAnySeat = math.huge
@@ -256,8 +300,8 @@ function BoardLayoutTests.RunAll(): (number, number, { string })
 
 		assertTest(
 			"U05_MaxTossDistanceRespected",
-			maxTossObserved <= BoardLayout.MAX_TOSS_DISTANCE + 0.5,
-			string.format("Jarak toss maksimum ke kursi: %.2f studs (batas %.2f)", maxTossObserved, BoardLayout.MAX_TOSS_DISTANCE)
+			maxTossObserved <= BoardLayout.MAX_TOSS_DISTANCE,
+			string.format("Jarak toss maksimum ke kursi terdekat: %.2f studs (batas %.2f)", maxTossObserved, BoardLayout.MAX_TOSS_DISTANCE)
 		)
 	end
 

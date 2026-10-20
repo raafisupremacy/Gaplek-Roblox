@@ -82,62 +82,71 @@ local function createPipFrame(pos: Vector2, parent: GuiObject): Frame
 	return dot
 end
 
--- Helper membangun elemen GUI pada SurfaceGui kartu
+-- Helper membangun elemen GUI pada SurfaceGui kartu (dioptimalkan me-reuse kontainer agar bebas GC churn)
 local function setupTileGUI(gui: SurfaceGui, leftVal: number, rightVal: number)
-	gui:ClearAllChildren()
+	local container = gui:FindFirstChild("FaceContainer") :: Frame?
+	local leftHalf: Frame?
+	local rightHalf: Frame?
 
-	local container = Instance.new("Frame")
-	container.Name = "FaceContainer"
-	container.Size = UDim2.new(1, 0, 1, 0)
-	container.BackgroundColor3 = IVORY_COLOR
-	container.BorderSizePixel = 0
-	container.Parent = gui
+	if not container then
+		container = Instance.new("Frame")
+		container.Name = "FaceContainer"
+		container.Size = UDim2.new(1, 0, 1, 0)
+		container.BackgroundColor3 = IVORY_COLOR
+		container.BorderSizePixel = 0
+		container.Parent = gui
 
-	-- Border halus kartu
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = container
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent = container
 
-	-- Setengah Kiri
-	local leftHalf = Instance.new("Frame")
-	leftHalf.Name = "LeftHalf"
-	leftHalf.BackgroundTransparency = 1
-	leftHalf.Size = UDim2.new(0.5, 0, 1, 0)
-	leftHalf.Position = UDim2.new(0, 0, 0, 0)
-	leftHalf.Parent = container
+		leftHalf = Instance.new("Frame")
+		leftHalf.Name = "LeftHalf"
+		leftHalf.BackgroundTransparency = 1
+		leftHalf.Size = UDim2.new(0.5, 0, 1, 0)
+		leftHalf.Position = UDim2.new(0, 0, 0, 0)
+		leftHalf.Parent = container
 
-	-- Setengah Kanan
-	local rightHalf = Instance.new("Frame")
-	rightHalf.Name = "RightHalf"
-	rightHalf.BackgroundTransparency = 1
-	rightHalf.Size = UDim2.new(0.5, 0, 1, 0)
-	rightHalf.Position = UDim2.new(0.5, 0, 0, 0)
-	rightHalf.Parent = container
+		rightHalf = Instance.new("Frame")
+		rightHalf.Name = "RightHalf"
+		rightHalf.BackgroundTransparency = 1
+		rightHalf.Size = UDim2.new(0.5, 0, 1, 0)
+		rightHalf.Position = UDim2.new(0.5, 0, 0, 0)
+		rightHalf.Parent = container
 
-	-- Garis pemisah tengah
-	local divider = Instance.new("Frame")
-	divider.Name = "Divider"
-	divider.AnchorPoint = Vector2.new(0.5, 0.5)
-	divider.Position = UDim2.new(0.5, 0, 0.5, 0)
-	divider.Size = UDim2.new(0, 4, 0.85, 0)
-	divider.BackgroundColor3 = LINE_COLOR
-	divider.BorderSizePixel = 0
-	divider.Parent = container
+		local divider = Instance.new("Frame")
+		divider.Name = "Divider"
+		divider.AnchorPoint = Vector2.new(0.5, 0.5)
+		divider.Position = UDim2.new(0.5, 0, 0.5, 0)
+		divider.Size = UDim2.new(0, 4, 0.85, 0)
+		divider.BackgroundColor3 = LINE_COLOR
+		divider.BorderSizePixel = 0
+		divider.Parent = container
 
-	local divCorner = Instance.new("UICorner")
-	divCorner.CornerRadius = UDim.new(1, 0)
-	divCorner.Parent = divider
+		local divCorner = Instance.new("UICorner")
+		divCorner.CornerRadius = UDim.new(1, 0)
+		divCorner.Parent = divider
+	else
+		leftHalf = container:FindFirstChild("LeftHalf") :: Frame?
+		rightHalf = container:FindFirstChild("RightHalf") :: Frame?
+		if leftHalf then leftHalf:ClearAllChildren() end
+		if rightHalf then rightHalf:ClearAllChildren() end
+	end
 
-	-- Rendir titik pada sisi kiri
-	local leftPips = PIP_COORDS[leftVal] or {}
-	for _, coord in ipairs(leftPips) do
-		createPipFrame(coord, leftHalf)
+	-- Render titik pada sisi kiri
+	if leftHalf then
+		local leftPips = PIP_COORDS[leftVal] or {}
+		for _, coord in ipairs(leftPips) do
+			createPipFrame(coord, leftHalf)
+		end
 	end
 
 	-- Render titik pada sisi kanan
-	local rightPips = PIP_COORDS[rightVal] or {}
-	for _, coord in ipairs(rightPips) do
-		createPipFrame(coord, rightHalf)
+	if rightHalf then
+		local rightPips = PIP_COORDS[rightVal] or {}
+		for _, coord in ipairs(rightPips) do
+			createPipFrame(coord, rightHalf)
+		end
 	end
 end
 

@@ -33,6 +33,7 @@ local UIController = require(script.Parent:WaitForChild("UIController"))
 local TileAnimator = require(script.Parent:WaitForChild("TileAnimator"))
 local SoundManager = require(script.Parent:WaitForChild("SoundManager"))
 local SettingsController = require(script.Parent:WaitForChild("SettingsController"))
+local EmoteController = require(script.Parent:WaitForChild("EmoteController"))
 
 type Tile = Types.Tile
 type Placed = Types.Placed
@@ -41,6 +42,7 @@ local localPlayer = Players.LocalPlayer
 
 -- Sub-views lokal
 local myRackView: any = nil
+local opponentRackViews: { [number]: any } = {}
 local mainBoardView: any = nil
 local interactionController: any = nil
 
@@ -101,6 +103,8 @@ local function bootstrap()
 	SettingsController.Init()
 	CameraController.Init()
 	UIController.Init()
+	EmoteController.SetHandControllers(handControllers)
+	EmoteController.Init()
 
 	-- Sambungkan callback kamera untuk efek hentak & FOV punch
 	TileAnimator.SetCameraCallbacks(CameraController.Shake, CameraController.PunchFOV)
@@ -151,6 +155,28 @@ local function bootstrap()
 				interactionController:SetViews(myRackView, mainBoardView)
 			end
 			myRackView:RenderRack(ClientState.GetTilesForRack())
+
+			-- Buat atau perbarui RackView 3D untuk seluruh lawan di meja (menampilkan punggung kartu polos)
+			for s = 1, GameConfig.TOTAL_SEATS do
+				if s ~= seat then
+					local count = remaining[s] or 0
+					if count > 0 then
+						if not opponentRackViews[s] then
+							opponentRackViews[s] = RackView.new(s, false)
+						end
+						local dummyHand = {}
+						for _ = 1, count do
+							table.insert(dummyHand, { a = 0, b = 0 })
+						end
+						opponentRackViews[s]:RenderRack(dummyHand)
+					else
+						if opponentRackViews[s] then
+							opponentRackViews[s]:Destroy()
+							opponentRackViews[s] = nil
+						end
+					end
+				end
+			end
 		end
 
 		-- Render snap board di meja
@@ -159,8 +185,32 @@ local function bootstrap()
 	end)
 
 	-- 4. Listener TurnStarted
+	local function updatePlayableRackHighlight(isMyTurnNow: boolean)
+		if not myRackView then return end
+		local playableMap: { [number]: boolean } = {}
+		if isMyTurnNow then
+			for i, card in ipairs(ClientState.myHand) do
+				local tile = card.tile
+				if #ClientState.boardPlaced == 0 then
+					if tile.a == tile.b then
+						playableMap[i] = true
+					end
+				else
+					local canL = (ClientState.leftEnd ~= nil) and (tile.a == ClientState.leftEnd or tile.b == ClientState.leftEnd)
+					local canR = (ClientState.rightEnd ~= nil) and (tile.a == ClientState.rightEnd or tile.b == ClientState.rightEnd)
+					if canL or canR then
+						playableMap[i] = true
+					end
+				end
+			end
+		end
+		myRackView:HighlightPlayableTiles(playableMap)
+	end
+
 	GameEvents.On("TurnStarted", function(seat: number, deadline: number)
-		interactionController:SetTurnActive(ClientState.mySeat > 0 and seat == ClientState.mySeat)
+		local isMyTurnNow = (ClientState.mySeat > 0 and seat == ClientState.mySeat)
+		interactionController:SetTurnActive(isMyTurnNow)
+		updatePlayableRackHighlight(isMyTurnNow)
 	end)
 
 	-- 4b. Listener DealStarted & RoundStarted
@@ -225,6 +275,12 @@ local function bootstrap()
 			end
 			myRackView:RenderRack(ClientState.GetTilesForRack())
 			interactionController:ClearSelection()
+		elseif opponentRackViews[seat] then
+			local dummyHand = {}
+			for _ = 1, remainingCount do
+				table.insert(dummyHand, { a = 0, b = 0 })
+			end
+			opponentRackViews[seat]:RenderRack(dummyHand)
 		end
 
 		-- Gerakkan tangan kursi terkait (animasi tangan IK)
@@ -240,19 +296,83 @@ local function bootstrap()
 		end
 	end)
 
-	-- 5b. Listener SeatChanged (Update kursi lokal & pembersihan rak)
-	GameEvents.On("SeatChanged", function(seatIndex: number, userId: number, username: string, isBot: boolean, action: string, tableId: number?)
+	-- 5b. Helper menyinkronkan HandController untuk semua kursi di meja aktif (pemain manusia & rig R15 bot)
+	local function syncTableHandControllers()
+		local tbl = getActiveTable()
+		if not tbl then return end
+		for s = 1, GameConfig.TOTAL_SEATS do
+			local seatPart = tbl:FindFirstChild("Seat" .. s) :: Seat?
+			local occHum = seatPart and seatPart.Occupant
+			local charModel = if occHum and occHum.Parent and occHum.Parent:IsA("Model") then (occHum.Parent :: Model) else nil
+			if not charModel then
+				for _, child in ipairs(tbl:GetChildren()) do
+					if child:IsA("Model") and child:GetAttribute("IsBotRig") and child:GetAttribute("SeatIndex") == s then
+						charModel = child
+						break
+					end
+				end
+			end
+
+			if charModel then
+				local existing = handControllers[s]
+				if not existing or existing.character ~= charModel or existing.isDestroyed then
+					if existing then
+						existing:Destroy()
+					end
+					local ok, hc = pcall(function()
+						return HandController.new(s, charModel)
+					end)
+					if ok and hc then
+						handControllers[s] = hc
+						hc:Idle()
+					end
+				end
+			else
+				if handControllers[s] then
+					handControllers[s]:Destroy()
+					handControllers[s] = nil
+				end
+			end
+		end
+	end
+
+	-- Listener SeatChanged (Update kursi lokal, HandController semua kursi & bot, & pembersihan rak)
+	GameEvents.On("SeatChanged", function(seatIndex: number, userId: number, _username: string, isBot: boolean, action: string, _tableId: number?)
 		if userId == localPlayer.UserId then
 			if action == "sit" then
 				ClientState.mySeat = seatIndex
 			elseif action == "stand" then
+				for s = 1, GameConfig.TOTAL_SEATS do
+					if handControllers[s] then
+						handControllers[s]:Destroy()
+						handControllers[s] = nil
+					end
+				end
 				ClientState.mySeat = 0
+				mainBoardView:RenderBoard({}, nil, nil)
 				if myRackView then
 					myRackView:Destroy()
 					myRackView = nil
 				end
+				for s = 1, GameConfig.TOTAL_SEATS do
+					if opponentRackViews[s] then
+						opponentRackViews[s]:Destroy()
+						opponentRackViews[s] = nil
+					end
+				end
+				return
 			end
 		end
+
+		task.delay(0.15, function()
+			syncTableHandControllers()
+		end)
+	end)
+
+	GameEvents.On("RoundStarted", function()
+		task.delay(0.15, function()
+			syncTableHandControllers()
+		end)
 	end)
 
 	-- 6. Listener PlayerPassed (Ketuk Meja 4 Lapisan)
@@ -322,11 +442,13 @@ local function bootstrap()
 	)
 
 	-- 9. Dev Tool: Inisialisasi FeelLab jika tersedia di ReplicatedStorage (M5)
-	local feelLabModule = ReplicatedStorage:FindFirstChild("FeelLab")
-	if feelLabModule then
-		local FeelLab = require(feelLabModule :: ModuleScript)
-		FeelLab.Init()
-	end
+	task.spawn(function()
+		local feelLabModule = ReplicatedStorage:FindFirstChild("FeelLab") or ReplicatedStorage:WaitForChild("FeelLab", 15)
+		if feelLabModule then
+			local FeelLab = require(feelLabModule :: ModuleScript)
+			FeelLab.Init()
+		end
+	end)
 
 	print("[PosGaplek Client] boot ok")
 end

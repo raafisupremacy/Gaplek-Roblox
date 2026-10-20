@@ -49,6 +49,10 @@ local function applySettings()
 	FeelConfig.USER_SETTINGS.REDUCE_SHAKE = currentSettings.reduceShake
 	FeelConfig.USER_SETTINGS.SENSITIVITY = currentSettings.sensitivity
 	FeelConfig.USER_SETTINGS.GRAPHICS_QUALITY = currentSettings.graphicsQuality
+	FeelConfig.USER_SETTINGS.QUALITY_TIER = if currentSettings.graphicsQuality == "tinggi"
+		then FeelConfig.QUALITY.HIGH
+		elseif currentSettings.graphicsQuality == "rendah" then FeelConfig.QUALITY.LOW
+		else FeelConfig.QUALITY.MEDIUM
 	FeelConfig.USER_SETTINGS.HAS_SEEN_TUTORIAL = currentSettings.hasSeenTutorial
 
 	for _, listener in ipairs(changeListeners) do

@@ -76,6 +76,93 @@ local FeelConfig = {
 		LEAN_FORWARD = 0.15, -- Condong ke depan saat giliran sendiri
 	},
 
+	-- ====================================================================
+	-- GRUP B: KAMERA & UI FEEL (GAME_FEEL.md §4, FIRST_PERSON_HANDS.md §7, UI_UX_SPEC.md §3 & §7)
+	-- ====================================================================
+	CAMERA_FEEL = {
+		-- 1. Napas kamera (sinusoidal pelan saat duduk)
+		BREATH_AMP_Y = 0.018, -- Amplitudo naik-turun napas (stud)
+		BREATH_AMP_PITCH_DEG = 0.35, -- Amplitudo anggukan halus napas (derajat)
+		BREATH_PERIOD = 3.6, -- Periode satu siklus napas penuh (detik)
+
+		-- 2. Condong saat giliran (turn lean)
+		TURN_LEAN_FORWARD = 0.15, -- Maju mendekati meja saat giliran sendiri (stud, negatif Z lokal)
+		TURN_LEAN_DOWN = -0.03, -- Sedikit turun saat condong (stud)
+		TURN_LEAN_PITCH_DEG = -2.5, -- Tambahan tunduk ke papan saat giliran sendiri (derajat)
+		TURN_LEAN_IN_TIME = 0.32, -- Waktu transisi maju saat giliran dimulai (detik)
+		TURN_LEAN_OUT_TIME = 0.40, -- Waktu rileks kembali saat giliran selesai (detik)
+		TURN_LEAN_ANTICIPATION = 0.04, -- Tarik napas mikro sebelum condong maju
+
+		-- 3. Shake kamera (0.15 - 0.25 s, peluruhan eksponensial)
+		SHAKE_MIN_DURATION = 0.15,
+		SHAKE_DEFAULT_DURATION = 0.20,
+		SHAKE_MAX_DURATION = 0.25,
+		SHAKE_POS_SCALE = 0.05,
+		SHAKE_ROLL_DEG = 1.2, -- Guncangan rotasi roll kecil (derajat)
+
+		-- 4. FOV Punch (antisipasi + follow-through non-linear)
+		FOV_ANTICIPATION_DEG = -0.8, -- Sedikit menyempit sesaat sebelum punch (atau saat mendarat)
+		FOV_PUNCH_DEFAULT_DEG = 3.0,
+		FOV_PUNCH_IN_TIME = 0.05,
+		FOV_RECOVERY_TIME = 0.25,
+	},
+
+	UI_FEEL = {
+		-- 5. Skor menghitung naik (Score counting up)
+		SCORE_COUNT_DURATION = 0.65, -- Durasi animasi angka bergulir naik (detik)
+		SCORE_TICK_INTERVAL = 0.07, -- Jeda minimal antar bunyi score_tick (detik)
+		SCORE_PULSE_SCALE = 1.12, -- Skala denyut label skor saat bertambah
+		SCORE_PULSE_DURATION = 0.28, -- Durasi denyut label skor (detik)
+
+		-- 6. Notifikasi tengah atas (Slide-in / Fade-out)
+		NOTIFY_SLIDE_IN_TIME = 0.25, -- Durasi masuk dari atas (Back Out)
+		NOTIFY_HOLD_TIME = 2.4, -- Durasi tampil default (detik)
+		NOTIFY_FADE_OUT_TIME = 0.25, -- Durasi keluar ke atas / memudar (Quad In)
+		NOTIFY_TARGET_Y_OFFSET = 58, -- Posisi Y di bawah bar atas (px)
+
+		-- 7. Indikator giliran (Billboard 3D + cincin timer + meja + kartu sah naik tipis)
+		TURN_BILLBOARD_OFFSET = Vector3.new(0, 3.1, 0), -- Offset di atas kursi/kepala pemain aktif
+		TURN_BILLBOARD_SIZE_PX = Vector2.new(170, 54), -- Ukuran BillboardGui indikator giliran
+		TURN_RING_PULSE_SCALE = 1.08, -- Skala denyut cincin indikator giliran
+		TURN_RING_PULSE_TIME = 0.55, -- Periode denyut cincin (detik)
+		TURN_TABLE_MARKER_SIZE = Vector3.new(0.03, 0.55, 0.55), -- Ukuran cincin/sorot halus di meja dekat kursi aktif
+		TURN_PLAYABLE_CARD_LIFT = 0.07, -- Kartu sah di rak naik tipis saat giliran sendiri (stud)
+		TURN_PLAYABLE_LIFT_TIME = 0.18, -- Durasi kartu sah naik tipis (detik)
+
+		-- 8. Peringatan waktu (<= 10 detik)
+		TIME_WARNING_THRESHOLD = 10, -- Mulai berdetak saat sisa waktu <= 10 detik
+		TIME_CRITICAL_THRESHOLD = 5, -- Merah kritis saat <= 5 detik
+		TIME_WARNING_PULSE_SCALE = 1.14, -- Denyut cincin/timer merah setiap detik
+		TIME_WARNING_PULSE_TIME = 0.22, -- Durasi denyut per detik
+		LAMP_FLICKER_BRIGHTNESS_DIP = 0.45, -- Penurunan terang lampu sesaat saat masuk <= 10 detik
+		LAMP_FLICKER_DURATION = 0.12, -- Durasi kedipan tunggal bohlam meja (detik)
+	},
+
+	-- ====================================================================
+	-- GRUP C: KARAKTER, IDLE BERKALA, REAKSI GILIRAN LAMA, & REAKSI BOT (GAME_FEEL.md §4, BOT_SPEC.md §3)
+	-- ====================================================================
+	CHARACTER_FEEL = {
+		-- 1. Variasi Idle Berkala (tiap 10-20 detik saat duduk & bukan giliran)
+		IDLE_MIN_INTERVAL = 10.0,
+		IDLE_MAX_INTERVAL = 20.0,
+		IDLE_ACTIONS = { "sip_coffee", "fan_self", "scratch_head" },
+		SIP_COFFEE_DURATION = 1.6, -- Durasi angkat gelas kopi ke mulut & letak kembali (detik)
+		FAN_SELF_DURATION = 1.4, -- Durasi mengipas badan 3 ayunan (detik)
+		SCRATCH_HEAD_DURATION = 1.2, -- Durasi menggaruk kepala 2 kali (detik)
+		COFFEE_STEAM_BURST = 6, -- Partikel uap tipis saat gelas kopi diangkat/diletakkan
+
+		-- 2. Reaksi Giliran Lama (> 10 detik)
+		LONG_TURN_THRESHOLD = 10.0, -- Detik berpikir sebelum pemain lain menoleh
+		HEAD_LOOK_MAX_YAW_DEG = 38.0, -- Sudut maksimal kepala menoleh ke kursi aktif (derajat)
+		HEAD_LOOK_PITCH_DEG = -5.0, -- Sedikit menunduk/menatap saat menoleh
+		HEAD_TURN_IN_TIME = 0.45, -- Durasi leher menoleh (Sine Out)
+		HEAD_TURN_OUT_TIME = 0.35, -- Durasi leher kembali menghadap tengah meja (Sine InOut)
+
+		-- 3. Reaksi Kontekstual Bot (BOT_SPEC.md §3)
+		BOT_OPPONENT_PASS_LAUGH_CHANCE = 0.35, -- Peluang bot menertawakan lawan yang terpaksa pas
+		BOT_ROUND_END_REACT_CHANCE = 0.65, -- Peluang bot bereaksi saat ronde selesai (clap/laugh vs sad/yah)
+	},
+
 	-- Parameter kamera first person duduk (FIRST_PERSON_HANDS.md §2, M3a)
 	CAMERA = {
 		DEFAULT_FOV = 70,
@@ -190,6 +277,32 @@ local FeelConfig = {
 		COFFEE_CUP_SHAKE = 0.02,
 		LAMP_SWAY_MAX_DEG = 3.0,
 		OTHER_TILES_RADIUS = 3.5,
+	},
+
+	-- Parameter Emote Wheel, Gelembung, Gestur, & Cooldown (GAME_FEEL.md §4)
+	EMOTE = {
+		COOLDOWN = 3.0, -- Cooldown emote pemain manusia (detik)
+		BOT_COOLDOWN = 8.0, -- Cooldown emote bot lebih panjang (detik)
+		BOT_TRIGGER_CHANCE = 0.25, -- Peluang bot melakukan emote saat pasang balak / pas
+		BUBBLE_DURATION = 2.2, -- Durasi tampil gelembung emoji di atas kepala (detik)
+		BUBBLE_POP_TIME = 0.25, -- Durasi tween pop-in (Back Out)
+		BUBBLE_FADE_TIME = 0.30, -- Durasi tween fade-out keluar
+		BUBBLE_OFFSET = Vector3.new(0, 2.6, 0), -- Offset BillboardGui di atas kepala/kursi
+		BUBBLE_SIZE_PX = 64, -- Ukuran gelembung BillboardGui (px)
+		WHEEL_RADIUS_PX = 95, -- Radius lingkaran emote wheel (px)
+		BUTTON_SIZE_PX = 52, -- Ukuran tombol emote (>= 48 px untuk mobile)
+		LAUGH_BODY_SHAKE_AMP = 0.06, -- Amplitudo guncangan kecil saat tertawa
+		LAUGH_BODY_SHAKE_DUR = 0.60, -- Durasi guncangan tawa (detik)
+		GESTURE_DURATION = 0.90, -- Durasi gestur tangan emote lewat HandController (detik)
+		ORDER = { "laugh", "angry", "sad", "yah", "clap", "taunt" },
+		ITEMS = {
+			laugh = { id = "laugh", label = "Tawa", emoji = "😂", soundSlot = "emote_laugh", animSlot = "Emote_Laugh" },
+			angry = { id = "angry", label = "Marah", emoji = "😠", soundSlot = "emote_angry", animSlot = "Emote_Angry" },
+			sad = { id = "sad", label = "Sedih", emoji = "😢", soundSlot = "emote_sad", animSlot = "Emote_Sad" },
+			yah = { id = "yah", label = "Yah!", emoji = "😩", soundSlot = "emote_yah", animSlot = "Emote_Yah" },
+			clap = { id = "clap", label = "Tepuk", emoji = "👏", soundSlot = "emote_clap", animSlot = "Emote_Clap" },
+			taunt = { id = "taunt", label = "Ejek", emoji = "😜", soundSlot = "emote_taunt", animSlot = "Emote_Taunt" },
+		},
 	},
 
 	-- Slot audio dari WORLD_ART_AUDIO.md §6 (ID kosong "" diisi saat upload manual)

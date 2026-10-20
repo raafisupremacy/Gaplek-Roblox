@@ -8,8 +8,12 @@ Semua dunia dibuat oleh kode (`WorldBuilder`) dari Part sederhana dengan materia
 - **Prop**: termos, gelas kopi, piring gorengan, sarung tergantung, radio jadul, obat nyamuk bakar (asap tipis), sandal, sepeda motor siluet di kejauhan (opsional).
 - **Lingkungan**: jalan paving gang, tembok pagar, rumah berbentuk blok dengan jendela menyala, pohon pisang (Part silinder + daun datar), semak, tiang listrik, kabel.
 
-## 2. Ukuran resmi (disetel dan dibuktikan di M2)
-Meja = 9.0×9.0 stud, permukaan meja ≈ 1.95 di atas dudukan bangku, bangku = 3.0×1.2 stud, kartu = 1.0×0.5×0.15 stud, zona barisan di tengah meja (`BOARD_ZONE`) = 7.0×5.6 stud (margin meja ke zona: X = 1.0 stud, Z = 1.7 stud).
+## 2. Ukuran resmi (`WorldBuilder` & `BoardLayout` pasca Stabilisasi v2)
+- **Meja fisik (`WorldBuilder`)**: `6.6 × 0.28 × 6.6` stud (tepi meja `±3.30` stud dari pusat; permukaan meja Meja 1 berada pada `Y = 4.00` stud, atau `1.45` stud di atas dudukan kursi).
+- **Kursi bakso plastik hijau (`Seat1..Seat4`)**: ukuran dudukan `1.4 × 0.22 × 1.4` stud pada `Y = 2.55` stud, berjarak pusat `3.55` stud dari pusat meja (`+0.25` stud di luar bibir meja `3.30` stud; tepi dalam kursi `2.85` stud, tepi luar `4.25` stud).
+- **Kartu domino (`TileFactory` / `BoardLayout`)**: `1.0 × 0.5 × 0.15` stud.
+- **Zona barisan (`BoardLayout.BOARD_ZONE_SIZE`)**: `5.6 × 5.9` stud (`X_LIMIT = 2.40`, `LANE_SPACING_Z = 1.02`, auto-centering XZ), terbukti memuat 28 kartu (baik worst-case 28 kartu maupun 1.000 ronde nyata) dengan `maxOuterEdgeX = 2.75 ≤ 3.30` stud, `maxOuterEdgeZ = 2.925 ≤ 3.30` stud (`0` kartu menggantung keluar daun meja, `0` OBB overlap).
+- **Jumlah Part Dunia (Baseline 4 Meja)**: **297 BaseParts** (anggaran < 1.500 Part).
 
 ## 3. Kartu (TileFactory)
 - Part balok, sudut sedikit membulat (visual), warna gading.

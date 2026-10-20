@@ -75,6 +75,22 @@ function TestRunner.runM5a(): { [string]: any }
 	return { passedCount = passed, failedCount = failed, logs = logs }
 end
 
+function TestRunner.runM5b(): { [string]: any }
+	print("[TestRunner] Menjalankan M5b Feel Tests (Grup B: Kamera & UI 4 Lapisan)...")
+	local M5bFeelTests = require(testsFolder:WaitForChild("M5bFeelTests"))
+	local passed, failed, logs = M5bFeelTests.RunAll()
+	print(string.format("[TestRunner] M5b Selesai: %d lulus, %d gagal", passed, failed))
+	return { passedCount = passed, failedCount = failed, logs = logs }
+end
+
+function TestRunner.runM5c(): { [string]: any }
+	print("[TestRunner] Menjalankan M5c Feel Tests (Grup C: Emote, Idle Karakter, Reaksi Giliran Lama, & Bot)...")
+	local M5cFeelTests = require(testsFolder:WaitForChild("M5cFeelTests"))
+	local passed, failed, logs = M5cFeelTests.RunAll()
+	print(string.format("[TestRunner] M5c Selesai: %d lulus, %d gagal", passed, failed))
+	return { passedCount = passed, failedCount = failed, logs = logs }
+end
+
 function TestRunner.runSimulation(mode: string?, count: number?, seed: number?): { [string]: any }
 	local simMode: any = mode or "2v2"
 	local simCount = count or 10000
@@ -101,9 +117,18 @@ function TestRunner.runM7(): { [string]: any }
 	return { passedCount = passed, failedCount = failed, logs = logs }
 end
 
-function TestRunner.runAll(): { [string]: any }
+function TestRunner.runMultiTable(): { [string]: any }
+	print("[TestRunner] Menjalankan MultiTable & Emote Isolation Tests...")
+	local MultiTableTests = require(testsFolder:WaitForChild("MultiTableTests"))
+	local passed, failed, logs = MultiTableTests.RunAll()
+	print(string.format("[TestRunner] MultiTable Selesai: %d lulus, %d gagal", passed, failed))
+	return { passedCount = passed, failedCount = failed, logs = logs }
+end
+
+function TestRunner.runAll(simRounds: number?): { [string]: any }
+	local roundsCount = simRounds or 1000
 	print("==================================================")
-	print("[TestRunner] MEMULAI RUN ALL TESTS (M0, M1, M2, M3a, M3b, M3c, M4, M5a, M6, M7)")
+	print(string.format("[TestRunner] MEMULAI RUN ALL TESTS (M0..M7, MultiTable, Simulasi %d ronde)", roundsCount))
 	print("==================================================")
 	local m0 = TestRunner.runM0()
 	local lTests = TestRunner.runL01_L30()
@@ -113,12 +138,15 @@ function TestRunner.runAll(): { [string]: any }
 	local m3c = TestRunner.runM3c()
 	local m4 = TestRunner.runM4()
 	local m5a = TestRunner.runM5a()
+	local m5b = TestRunner.runM5b()
+	local m5c = TestRunner.runM5c()
 	local m6 = TestRunner.runM6()
 	local m7 = TestRunner.runM7()
-	
-	-- Jalankan simulasi ringkas
-	local sim2v2 = TestRunner.runSimulation("2v2", 1000, 112233)
-	local simSolo = TestRunner.runSimulation("solo", 1000, 445566)
+	local multiTable = TestRunner.runMultiTable()
+
+	-- Jalankan simulasi sesuai parameter (default cepat 1.000, penuh 10.000)
+	local sim2v2 = TestRunner.runSimulation("2v2", roundsCount, 112233)
+	local simSolo = TestRunner.runSimulation("solo", roundsCount, 445566)
 
 	return {
 		m0 = m0,
@@ -129,8 +157,11 @@ function TestRunner.runAll(): { [string]: any }
 		m3c = m3c,
 		m4 = m4,
 		m5a = m5a,
+		m5b = m5b,
+		m5c = m5c,
 		m6 = m6,
 		m7 = m7,
+		multiTable = multiTable,
 		sim2v2 = sim2v2,
 		simSolo = simSolo,
 	}

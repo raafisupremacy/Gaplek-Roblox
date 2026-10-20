@@ -34,6 +34,8 @@ local TileAnimator: any = nil
 local SoundManager: any = nil
 local TileFactory: any = nil
 local CameraController: any = nil
+local UIController: any = nil
+local EmoteController: any = nil
 
 local function getClientModules()
 	local clientScripts = localPlayer:WaitForChild("PlayerScripts"):WaitForChild("Client")
@@ -48,6 +50,12 @@ local function getClientModules()
 	end
 	if not CameraController then
 		CameraController = require(clientScripts:WaitForChild("CameraController"))
+	end
+	if not UIController then
+		UIController = require(clientScripts:WaitForChild("UIController"))
+	end
+	if not EmoteController then
+		EmoteController = require(clientScripts:WaitForChild("EmoteController"))
 	end
 end
 
@@ -188,7 +196,7 @@ function FeelLab.Init()
 
 	-- Header Title
 	local header = Instance.new("TextLabel")
-	header.Text = "FEEL LAB: GRUP A"
+	header.Text = "FEEL LAB: GRUP A, B & C"
 	header.Size = UDim2.new(1, -40, 0, 32)
 	header.Position = UDim2.new(0, 10, 0, 2)
 	header.TextColor3 = Color3.fromRGB(255, 215, 90)
@@ -213,7 +221,7 @@ function FeelLab.Init()
 	scroll.Position = UDim2.new(0, 0, 0, 36)
 	scroll.BackgroundTransparency = 1
 	scroll.ScrollBarThickness = 5
-	scroll.CanvasSize = UDim2.new(0, 0, 0, 720)
+	scroll.CanvasSize = UDim2.new(0, 0, 0, 1850)
 	scroll.Parent = frame
 
 	local list = Instance.new("UIListLayout")
@@ -360,20 +368,186 @@ function FeelLab.Init()
 	end)
 
 	-- ================================================================
+	-- GRUP B: KAMERA & UI FEEL TRIGGERS + STEPPERS
+	-- ================================================================
+
+	local sectionGrpB = Instance.new("TextLabel")
+	sectionGrpB.Text = "-- GRUP B: KAMERA & UI --"
+	sectionGrpB.Size = UDim2.new(1, -12, 0, 22)
+	sectionGrpB.TextColor3 = Color3.fromRGB(255, 215, 90)
+	sectionGrpB.Font = Enum.Font.SourceSansBold
+	sectionGrpB.TextSize = 13
+	sectionGrpB.BackgroundTransparency = 1
+	sectionGrpB.Parent = scroll
+
+	local demoLeanActive = false
+	createActionButton("BtnToggleLean", "CONDONG GILIRAN (TOGGLE)", Color3.fromRGB(60, 110, 150), scroll, function()
+		demoLeanActive = not demoLeanActive
+		CameraController.SetTurnLean(demoLeanActive)
+	end)
+
+	createActionButton("BtnShakeFov", "SHAKE + FOV PUNCH", Color3.fromRGB(165, 85, 45), scroll, function()
+		CameraController.Shake(FeelConfig.SHAKE.AMPLITUDE, FeelConfig.CAMERA_FEEL.SHAKE_DEFAULT_DURATION)
+		CameraController.PunchFOV(FeelConfig.FOV.PUNCH_DEGREES)
+	end)
+
+	local demoScoreVal = 24
+	createActionButton("BtnScoreUp", "SKOR MENGHITUNG NAIK (+18)", Color3.fromRGB(50, 130, 80), scroll, function()
+		local prev = demoScoreVal
+		demoScoreVal += 18
+		if UIController and UIController.TriggerScoreCountUp then
+			UIController.TriggerScoreCountUp({ [1] = prev, [2] = 15 }, { [1] = demoScoreVal, [2] = 15 }, "2v2")
+		end
+	end)
+
+	local notifySamples = {
+		"Giliranmu!",
+		"Bot Mas Joko pas (ketuk meja)",
+		"Kocok ulang: tidak ada balak pembuka",
+	}
+	local notifyIdx = 0
+	createActionButton("BtnNotify", "NOTIFIKASI SLIDE-IN (TES)", Color3.fromRGB(115, 80, 140), scroll, function()
+		notifyIdx = (notifyIdx % #notifySamples) + 1
+		if UIController and UIController.ShowNotification then
+			UIController.ShowNotification(notifySamples[notifyIdx], FeelConfig.UI_FEEL.NOTIFY_HOLD_TIME)
+		end
+	end)
+
+	local demoTurnSeat = 0
+	createActionButton("BtnTurnInd", "INDIKATOR GILIRAN 3D + TING", Color3.fromRGB(140, 115, 40), scroll, function()
+		demoTurnSeat = (demoTurnSeat % 4) + 1
+		if UIController and UIController.UpdateTurnIndicator then
+			UIController.UpdateTurnIndicator(demoTurnSeat, os.clock() + 15, true)
+		end
+	end)
+
+	createActionButton("BtnTimeWarn", "PERINGATAN WAKTU 10s + KEDIP", Color3.fromRGB(175, 45, 45), scroll, function()
+		if UIController and UIController.TriggerTimeWarning then
+			UIController.TriggerTimeWarning(10)
+		end
+	end)
+
+	createStepper("Breath Amp Y", FeelConfig.CAMERA_FEEL.BREATH_AMP_Y, 0.005, 0.0, 0.06, scroll, function(v)
+		FeelConfig.CAMERA_FEEL.BREATH_AMP_Y = v
+		FeelConfig.SetOverride("CAM_BREATH_AMP_Y", v)
+	end)
+
+	createStepper("Turn Lean (stud)", FeelConfig.CAMERA_FEEL.TURN_LEAN_FORWARD, 0.03, 0.0, 0.40, scroll, function(v)
+		FeelConfig.CAMERA_FEEL.TURN_LEAN_FORWARD = v
+		FeelConfig.SetOverride("CAM_TURN_LEAN_FORWARD", v)
+	end)
+
+	createStepper("Shake Dur (s)", FeelConfig.CAMERA_FEEL.SHAKE_DEFAULT_DURATION, 0.02, 0.15, 0.25, scroll, function(v)
+		FeelConfig.CAMERA_FEEL.SHAKE_DEFAULT_DURATION = v
+		FeelConfig.SHAKE.DURATION = v
+		FeelConfig.SetOverride("CAM_SHAKE_DURATION", v)
+	end)
+
+	createStepper("Score Count (s)", FeelConfig.UI_FEEL.SCORE_COUNT_DURATION, 0.10, 0.20, 1.50, scroll, function(v)
+		FeelConfig.UI_FEEL.SCORE_COUNT_DURATION = v
+		FeelConfig.SetOverride("UI_SCORE_COUNT_DURATION", v)
+	end)
+
+	createStepper("Notify Hold (s)", FeelConfig.UI_FEEL.NOTIFY_HOLD_TIME, 0.20, 1.0, 5.0, scroll, function(v)
+		FeelConfig.UI_FEEL.NOTIFY_HOLD_TIME = v
+		FeelConfig.SetOverride("UI_NOTIFY_HOLD_TIME", v)
+	end)
+
+	-- ================================================================
+	-- GRUP C: EMOTE, IDLE BERKALA, REAKSI GILIRAN LAMA, & REAKSI BOT
+	-- ================================================================
+
+	local sectionGrpC = Instance.new("TextLabel")
+	sectionGrpC.Text = "-- GRUP C: EMOTE & KARAKTER --"
+	sectionGrpC.Size = UDim2.new(1, -12, 0, 22)
+	sectionGrpC.TextColor3 = Color3.fromRGB(255, 215, 90)
+	sectionGrpC.Font = Enum.Font.SourceSansBold
+	sectionGrpC.TextSize = 13
+	sectionGrpC.BackgroundTransparency = 1
+	sectionGrpC.Parent = scroll
+
+	local demoEmoteIdx = 0
+	createActionButton("BtnEmoteDemo", "DEMO 6 EMOTE (GELEMBUNG + GESTUR)", Color3.fromRGB(145, 75, 130), scroll, function()
+		local order = FeelConfig.EMOTE.ORDER
+		demoEmoteIdx = (demoEmoteIdx % #order) + 1
+		local emoteId = order[demoEmoteIdx]
+		if EmoteController and EmoteController.PlayEmoteForSeat then
+			EmoteController.PlayEmoteForSeat(1, emoteId)
+		end
+	end)
+
+	createActionButton("BtnIdleCoffee", "IDLE: SERUPUT KOPI + UAP", Color3.fromRGB(115, 75, 45), scroll, function()
+		if EmoteController and EmoteController.TriggerIdleVariation then
+			EmoteController.TriggerIdleVariation(1, "sip_coffee")
+		end
+	end)
+
+	createActionButton("BtnIdleFan", "IDLE: KIPAS BADAN (3X)", Color3.fromRGB(55, 115, 115), scroll, function()
+		if EmoteController and EmoteController.TriggerIdleVariation then
+			EmoteController.TriggerIdleVariation(1, "fan_self")
+		end
+	end)
+
+	createActionButton("BtnIdleScratch", "IDLE: GARUK KEPALA (2X)", Color3.fromRGB(95, 90, 60), scroll, function()
+		if EmoteController and EmoteController.TriggerIdleVariation then
+			EmoteController.TriggerIdleVariation(1, "scratch_head")
+		end
+	end)
+
+	local lookTargetSeat = 0
+	createActionButton("BtnLongTurnLook", "REAKSI GILIRAN LAMA (MENOLEH)", Color3.fromRGB(155, 95, 40), scroll, function()
+		lookTargetSeat = (lookTargetSeat + 1) % 5 -- 1..4 lalu 0 (reset tengah meja)
+		if EmoteController and EmoteController.TriggerLongTurnReaction then
+			EmoteController.TriggerLongTurnReaction(if lookTargetSeat > 0 then lookTargetSeat else nil)
+		end
+	end)
+
+	local botReactTypes = { "laugh", "yah", "clap", "taunt" }
+	local botReactIdx = 0
+	createActionButton("BtnBotReact", "REAKSI BOT KONTEKSTUAL", Color3.fromRGB(65, 125, 85), scroll, function()
+		botReactIdx = (botReactIdx % #botReactTypes) + 1
+		local seatToReact = ((botReactIdx % 3) + 2) -- Kursi 2, 3, atau 4
+		if EmoteController and EmoteController.PlayEmoteForSeat then
+			EmoteController.PlayEmoteForSeat(seatToReact, botReactTypes[botReactIdx])
+		end
+	end)
+
+	createStepper("Idle Min (s)", FeelConfig.CHARACTER_FEEL.IDLE_MIN_INTERVAL, 1.0, 4.0, 25.0, scroll, function(v)
+		FeelConfig.CHARACTER_FEEL.IDLE_MIN_INTERVAL = v
+		FeelConfig.SetOverride("CHAR_IDLE_MIN_INTERVAL", v)
+	end)
+
+	createStepper("Sip Dur (s)", FeelConfig.CHARACTER_FEEL.SIP_COFFEE_DURATION, 0.1, 0.8, 3.0, scroll, function(v)
+		FeelConfig.CHARACTER_FEEL.SIP_COFFEE_DURATION = v
+		FeelConfig.SetOverride("CHAR_SIP_COFFEE_DURATION", v)
+	end)
+
+	createStepper("Long Turn (s)", FeelConfig.CHARACTER_FEEL.LONG_TURN_THRESHOLD, 1.0, 5.0, 20.0, scroll, function(v)
+		FeelConfig.CHARACTER_FEEL.LONG_TURN_THRESHOLD = v
+		FeelConfig.SetOverride("CHAR_LONG_TURN_THRESHOLD", v)
+	end)
+
+	createStepper("Head Look (deg)", FeelConfig.CHARACTER_FEEL.HEAD_LOOK_MAX_YAW_DEG, 3.0, 15.0, 65.0, scroll, function(v)
+		FeelConfig.CHARACTER_FEEL.HEAD_LOOK_MAX_YAW_DEG = v
+		FeelConfig.SetOverride("CHAR_HEAD_LOOK_MAX_YAW_DEG", v)
+	end)
+
+	-- ================================================================
 	-- TOMBOL SIMPAN / EKSPOR PRESET KE KONSOL
 	-- ================================================================
 
 	createActionButton("BtnExport", "SIMPAN / EKSPOR PRESET", Color3.fromRGB(40, 130, 160), scroll, function()
 		local p = FeelConfig.SLAM_PRESETS.MEDIUM
+		local cf = FeelConfig.CAMERA_FEEL
+		local uf = FeelConfig.UI_FEEL
+		local chf = FeelConfig.CHARACTER_FEEL
 		print("==================================================")
-		print("-- [FEEL LAB EXPORT PRESET: HENTAK SEDANG] --")
-		print(string.format("LIFT = %.2f,", p.LIFT))
-		print(string.format("TILT_DEG = %.1f,", p.TILT_DEG))
-		print(string.format("PREPARE_PAUSE = %.2f,", p.PREPARE_PAUSE))
-		print(string.format("SWING_TIME = %.2f,", p.SWING_TIME))
-		print(string.format("FOV_PUNCH = %.1f,", p.FOV_PUNCH))
-		print(string.format("SHAKE_AMP = %.2f,", p.SHAKE_AMP))
-		print(string.format("DUST_COUNT = %d,", p.DUST_COUNT))
+		print("-- [FEEL LAB EXPORT PRESET: GRUP A, B & C] --")
+		print(string.format("LIFT = %.2f, TILT_DEG = %.1f, PREPARE_PAUSE = %.2f, SWING_TIME = %.2f,", p.LIFT, p.TILT_DEG, p.PREPARE_PAUSE, p.SWING_TIME))
+		print(string.format("FOV_PUNCH = %.1f, SHAKE_AMP = %.2f, DUST_COUNT = %d,", p.FOV_PUNCH, p.SHAKE_AMP, p.DUST_COUNT))
+		print(string.format("BREATH_AMP_Y = %.3f, TURN_LEAN_FORWARD = %.2f, SHAKE_DEFAULT_DURATION = %.2f,", cf.BREATH_AMP_Y, cf.TURN_LEAN_FORWARD, cf.SHAKE_DEFAULT_DURATION))
+		print(string.format("SCORE_COUNT_DURATION = %.2f, NOTIFY_HOLD_TIME = %.2f,", uf.SCORE_COUNT_DURATION, uf.NOTIFY_HOLD_TIME))
+		print(string.format("IDLE_MIN_INTERVAL = %.1f, SIP_COFFEE_DURATION = %.2f, LONG_TURN_THRESHOLD = %.1f, HEAD_LOOK_MAX_YAW_DEG = %.1f,", chf.IDLE_MIN_INTERVAL, chf.SIP_COFFEE_DURATION, chf.LONG_TURN_THRESHOLD, chf.HEAD_LOOK_MAX_YAW_DEG))
 		print("==================================================")
 	end)
 

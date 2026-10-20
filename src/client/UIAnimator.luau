@@ -178,6 +178,7 @@ end
 
 --[=[
 	Animasi rolling angka (counting animation) pada TextLabel skor (UI_UX_SPEC.md §3).
+	Mendukung callback onTick(currentVal, alpha) setiap kali angka berubah agar dapat memicu bunyi score_tick.
 ]=]
 function UIAnimator.CountNumber(
 	label: TextLabel,
@@ -186,7 +187,8 @@ function UIAnimator.CountNumber(
 	duration: number?,
 	prefix: string?,
 	suffix: string?,
-	callback: (() -> ())?
+	callback: (() -> ())?,
+	onTick: ((val: number, alpha: number) -> ())?
 )
 	local dur = duration or 0.6
 	local pre = prefix or ""
@@ -199,6 +201,7 @@ function UIAnimator.CountNumber(
 	end
 
 	local startTime = os.clock()
+	local lastVal = startVal
 	local conn: RBXScriptConnection? = nil
 
 	conn = RunService.RenderStepped:Connect(function()
@@ -207,6 +210,13 @@ function UIAnimator.CountNumber(
 		-- Easing quad out
 		local easedAlpha = 1 - (1 - alpha) * (1 - alpha)
 		local currentVal = math.floor(startVal + (endVal - startVal) * easedAlpha)
+
+		if currentVal ~= lastVal then
+			lastVal = currentVal
+			if onTick then
+				onTick(currentVal, alpha)
+			end
+		end
 
 		label.Text = string.format("%s%d%s", pre, currentVal, suf)
 

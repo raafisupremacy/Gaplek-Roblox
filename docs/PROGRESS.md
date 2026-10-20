@@ -7,14 +7,14 @@ AI mengisi bagian ini di akhir setiap sesi. Jangan hapus entri lama.
 |---|---|---|
 | M0 | selesai | Lingkungan diperiksa tuntas, Rojo sync aktif, Types, GameConfig, FeelConfig, Remotes, Rng, Logger, TestRunner, 25/25 unit tests PASS |
 | M1 | selesai | DominoLogic lengkap (0 API Roblox), BotService (Mudah & Normal), L01–L30 PASS (30/30), Simulasi 20.000 ronde (2v2 + solo) invarian PASS, fuzzing PASS |
-| M2 | selesai | Pos Ronda 3D lengkap via WorldBuilder (74 Part < 1.500), 4 kursi Seat valid & teruji diduduki avatar, BoardLayout murni 7/7 test PASS (0 OBB overlap pada 1.000 fuzz games & worst-case 28 kartu, toss <= 4.0 studs) |
-| M3a | selesai | Duduk & Kamera First-Person: TableService (ProximityPrompt 'Duduk', 1 kursi 1 pemain, validasi rig R15, RequestStand, PlayerRemoving/disconnect handling), CameraController (Scriptable POV di CameraAnchor, batas pandang Yaw ±70° & Pitch -55°/+25°, kontrol mouse & sentuh mobile, kepala/rambut sembunyi lokal, badan & lengan tetap terlihat, tombol Berdiri UI). 7/7 unit test PASS + live Play Solo verified. |
-| M3b | selesai | Spike tangan IKControl: HandController (new, Idle napas, ReachTo antisipasi, Grab angkat 0.3, Move, Place/Slam, Destroy), matriks 20 sel terukur di 4 tipe tubuh R15. Keputusan: LAYAK DENGAN SYARAT (reach dekat 100%, penetrasi meja 0.00 stud, toss untuk titik jauh, sinkron delta 0.00 stud). |
-| M3c | selesai | Kartu 3D, rak, papan, dan interaksi pemilihan kartu: TileFactory (28 kartu gading, pips tajam SurfaceGui 200x100, object pool reuse, FlipFaceDown, SetGlow), RackView (kemiringan -22°, auto-collapse & pemusatan), BoardView (balak melintang 90°, penanda angka ujung barisan, ghost preview), InteractionController (hover raycast, tap/click, double-tap auto-play, shake feedback ilegal), DebugSandbox (isolasi klien, memory leak test 50 ronde). 7/7 unit tests PASS, regresi kumulatif PASS. |
-| M4 | selesai | Game Penuh End-to-End: GameService otoritatif, TableService host & bot fill/handover, Remotes aman + token kartu acak per ronde & rate limiter, StateSync tanpa kebocoran hand lawan, ClientState & GameEvents, UIController HUD fungsional, 9/9 M4 test PASS, 86/86 kumulatif PASS. |
-| M5 | sebagian (Grup A) | Game Feel Grup A (Kartu & Tangan) selesai: 4 lapisan respons pada 8 aksi (kocok, bagi, hover, pilih, pasang biasa, hentak, ilegal, pas), FeelConfig presets & live override, SoundManager safe audio, TileAnimator orkestrasi partikel & lingkungan, FeelLab dev panel terverifikasi visual, 7/7 M5a tests PASS, 93/93 kumulatif PASS. Menunggu Grup B (Kamera & UI). |
-| M6 | selesai | Lobi Meja lengkap (mode host 2v2/solo, 4 kartu kursi & badge tim, tombol Mulai), Hasil Ronde & Hasil Game (galeri kartu sisa terbuka, breakdown teks perhitungan poin transparan teruji fixture R1-R10, ranking & tombol Main Lagi/Berdiri), Pengaturan tersimpan DataStoreService + in-memory fallback tahan uji (volume 4 grup, kurangi guncangan, sensitivitas, kualitas grafik), Onboarding & 5 pilar Aturan Main modal, target sentuh >=48 px, bebas obstruksi meja pada 360x640, 7/7 M6 tests PASS, 100/100 tests kumulatif PASS. |
-| M7 | selesai | Audit penuh (108/108 unit tests PASS), Keamanan remote & 0 kebocoran hand lawan, Isolasi ServerStorage & release flag ENABLE_FEEL_LAB = false, Anggaran performa (74/1.500 Part, <150 partikel, target 60 FPS mobile), Ketahanan 200 game penuh bot tuntas tanpa leak, Balancing bot manusiawi (1.0–2.5s think time, 5% blunder Easy, evaluasi heuristik Normal), Kepatuhan Roblox Community Standards & panduan checklist rilis manual. |
+| M2 | selesai | Pos Ronda 3D 4 meja aktif via WorldBuilder (baseline **297 BaseParts** < 1.500), meja `6.6×6.6` stud (tepi `±3.30`) & kursi bakso di `3.55` stud (`+0.25` di luar meja), `BoardLayout` murni dengan auto-centering XZ (`BOARD_ZONE 5.6×5.9`, `X_LIMIT 2.40`, `LANE_SPACING_Z 1.02`) lulus 8/8 unit tests PASS termasuk `U06_NoTileOverhangsTableTop` (0 kartu overhang di 1.000 ronde & worst-case 28 kartu). |
+| M3a | selesai | Duduk & Kamera First-Person: TableService (ProximityPrompt 'Duduk', 1 kursi 1 pemain, validasi rig R15, RequestStand, PlayerRemoving/disconnect handling), CameraController (Scriptable POV di CameraAnchor, batas pandang Yaw ±70° & Pitch -55°/+25°, kontrol mouse & sentuh mobile, kepala/rambut sembunyi lokal, badan & lengan tetap terlihat, tombol Berdiri UI). 8/8 unit test PASS + live Play Solo verified. |
+| M3b | sebagian (IK 1 pemain terukur; sinkron 2 pemain manual) | `M3bSpikeTests` membaca `RightHand.Position` sesungguhnya setelah `IKControl` (`Enum.IKControlType.Position`) dievaluasi di Play mode pada meja `6.6×6.6` (kursi `3.55` stud): jangkauan target dekat `12/12 (100%)` (`rem = 0.00` stud, `bodyOverlap = false`, penetrasi meja `≤ 0.16` stud); Pusat Meja (`rem 1.74–2.02` stud) & Ujung Jauh (`rem 2.61–2.96` stud) memakai slide/toss kartu (`MAX_TOSS_DISTANCE = 4.0`). Sinkronisasi jaringan 2 pemain berstatus `TIDAK-BISA-DIJALANKAN` via MCP (tugas manual Local Server 2 Players). |
+| M3c | selesai | Kartu 3D, rak, papan, dan interaksi pemilihan kartu: TileFactory (28 kartu gading, pips tajam SurfaceGui 200x100, object pool reuse, FlipFaceDown, SetGlow), RackView (kemiringan -22°, auto-collapse & pemusatan), BoardView (balak melintang 90°, penanda angka ujung barisan, ghost preview), InteractionController (hover raycast, tap/click, double-tap auto-play, shake feedback ilegal), DebugSandbox (isolasi klien, memory leak test 50 ronde). 7/7 unit tests PASS. |
+| M4 | selesai | Game Penuh End-to-End & Isolasi Multi-Meja: GameService otoritatif, TableService host & bot fill/handover, Remotes aman + token kartu acak per ronde & rate limiter, StateSync tanpa kebocoran hand lawan maupun lintas meja, ClientState & GameEvents, UIController HUD fungsional, 9/9 M4 test PASS + 5/5 MultiTable test PASS. |
+| M5 | sebagian (A, B, C selesai; D–E belum) | Grup A (Kartu & Tangan 4 Lapisan, 7/7 M5a PASS), Grup B (Kamera & UI 4 Lapisan, 8/8 M5b PASS), dan Grup C (Emote Wheel 6 ekspresi + gelembung + hook animasi, idle berkala kopi/kipas/garuk, reaksi giliran lama menoleh >10s, rig R15 bot di kursi & reaksi bot kontekstual; 7/7 M5c PASS) selesai. Grup D (Suasana & Audio) dan Grup E (Momen Spesial) belum selesai. |
+| M6 | belum divalidasi ulang | Lobi, UX, Onboarding, Pengaturan, dan Room Browser 4 meja lulus 7/7 unit test M6, namun belum divalidasi ulang penuh secara visual pasca perubahan meja `6.6×6.6` dan penambahan Emote Wheel. |
+| M7 | belum divalidasi ulang | Audit Keamanan, Performa (baseline **297 BaseParts**), Ketahanan 200 Game Bot, Balancing Bot, dan Kepatuhan lulus 8/8 unit test M7, namun belum divalidasi ulang penuh dengan playtest manual multi-pemain. |
 
 ---
 
@@ -808,3 +808,177 @@ Berdasarkan ketersediaan lingkungan di atas:
   - Lakukan playtest santai bersama teman di Roblox Studio (Local Server 2–4 Players) untuk menikmati suasana multi-meja dan kursi bakso.
   - Game siap di-publish kapan pun pengguna menginginkannya.
 
+### Sesi Stabilisasi v2 — 20 Oktober 2026
+- **Dikerjakan**:
+  - **0. Cek Koneksi Studio**: Terverifikasi aktif (`get_studio_state` -> place `"PosGaplek"`, `studio_id = "fd09712d-0fb5-4387-87ee-c1e46dd85a8d"`, `execute_luau` berhasil).
+  - **1a & 1b. Pengukuran Bug Papan vs Meja & Kalkulasi 3 Opsi**:
+    - Mengukur di Studio: `TableTop.Size = 5.60 × 0.28 × 5.60` stud (tepi meja `±2.80` stud dari pusat), posisi pusat kursi `Seat1..4` = `2.65` stud dari pusat (ukuran kursi `1.40×0.22×1.40` stud -> tepi dalam kursi di `1.95` stud atau `0.85` stud masuk ke kolong meja).
+    - Pada `BoardLayout` saat ini (`BOARD_ZONE_SIZE = 7.0×5.6`, `X_LIMIT = 2.90`, `LANE_SPACING_Z = 1.10`):
+      - Dari 1.000 ronde nyata `DominoLogic` (maks 25 kartu terpasang): pusat kartu terjauh `maxCenterX = 3.00`, `maxCenterZ = 3.30`, **tepi luar kartu terjauh `maxOuterEdgeX = 3.25` stud** (menggantung keluar tepi meja `2.80` sejauh **+0.45 stud**), **`maxOuterEdgeZ = 3.80` stud** (menggantung keluar tepi meja sejauh **+1.00 stud**).
+      - Dari worst-case 28 kartu 1 lengan (`U02`): **`maxOuterEdgeX = 3.25` stud** (+0.45 stud di luar meja), **`maxOuterEdgeZ = 4.90` stud** (+2.10 stud di luar meja).
+    - Menghitung 3 opsi terukur lengkap dengan dampak pada jangkauan tangan, kapasitas 28 kartu, dan jarak kursi. Setelah pengguna memberikan persetujuan untuk memilih opsi terbaik, menerapkan **Opsi 1 (Rekomendasi)** pada Langkah 1c:
+      - `BoardLayout.luau`: `TABLE_SIZE = Vector3.new(6.6, 0.28, 6.6)` (tepi meja `±3.30` stud), `SEAT_DISTANCE = 3.55` stud (`+0.25` stud di luar tepi meja), `BOARD_ZONE_SIZE = Vector3.new(5.6, 0.15, 5.9)`, `X_LIMIT = 2.40`, `LANE_SPACING_Z = 1.02`, serta auto-centering bounding box XZ pada `BoardLayout.Calculate`.
+      - `WorldBuilder.luau`: Memperbarui pembuatan ke-4 meja dan 16 kursi bakso agar membaca dimensi langsung dari `BoardLayout` (`GetTableSize()`, `GetSeatDistance()`) dan menempatkan `RackAnchor` tepat di atas bibir meja (`CFrame.new(0, 1.45, -0.60)`).
+      - `BoardLayoutTests.luau`: Mengganti seluruh angka batas ketik manual (`4.5/3.5/4.0`) menjadi pembacaan langsung dari konfigurasi (`BoardLayout.GetTableHalfExtent()`, `GetBoardZone()`, `GetSeatDistance()`, dan `TableTop.Size` di Workspace) serta menambahkan tes `U06_NoTileOverhangsTableTop` (terbukti 0 kartu overhang dari 1.000 ronde nyata dan worst-case 28 kartu).
+  - **2. Pengukuran IK Sesungguhnya (`src/tests/M3bSpikeTests.luau` & `src/client/HandController.luau`)**:
+    - Mengubah `IKControl.Type` menjadi `Enum.IKControlType.Position` dan pole siku ke `CFrame.new(±1.8, 0.8, -0.6)` di `HandController.luau` agar rantai lengan 2-tulang R15 fokus mencapai koordinat posisi target tanpa terdistorsi paksaan orientasi pergelangan tangan.
+    - Menulis ulang `M3bSpikeTests.luau` menggunakan rig R15 standar (`Players:CreateHumanoidModelFromDescription` dengan `Motor6D` lengkap dan skala tubuh nyata), menunggu beberapa frame di Play mode, dan membaca `RightHand.Position` **sesungguhnya** serta mengukur penetrasi meja & torso via `workspace:GetPartBoundsInBox` (`OverlapParams`) dan `workspace:Raycast`.
+    - Menghapus semua nilai hardcode (`0.00` dan `16.6` ms). Menandai sinkronisasi jaringan 2 pemain sebagai `TIDAK-BISA-DIJALANKAN` via MCP dan memasukkannya ke Tugas Manual Pengguna (Local Server 2 Players).
+  - **3. Sistem Emote Lengkap (`src/client/EmoteController.luau`)**:
+    - Menambahkan konfigurasi `FeelConfig.EMOTE` (cooldown `3.0s`, bot cooldown `8.0s`, durasi & ukuran gelembung, radius wheel, dan 6 item emote: `laugh`, `angry`, `sad`, `yah`, `clap`, `taunt`).
+    - Membangun `EmoteController.luau` (wheel 6 ekspresi, tombol pembuka & shortcut `G` saat duduk, cooldown 3 detik, `BillboardGui` gelembung emoji di atas kepala kursi/karakter dengan pop-in `Back` & fade-out, animasi `Humanoid:PlayEmote("laugh")` via `pcall` + gestur tangan `HandController:Gesture` + guncangan kecil saat tertawa, suara via `SoundManager.PlayEmote`, dan listener `EmotePlayed` untuk semua kursi di meja yang sama).
+    - Menghubungkan pemicu emote kontekstual bot di `GameService.TriggerBotEmote` (saat bot memasang balak atau terpaksa pas) dengan menghormati `BOT_COOLDOWN`.
+  - **4. Rekonsiliasi Status & Dokumentasi**:
+    - Memperbarui tabel status milestone di `PROGRESS.md` secara jujur (`M2`: selesai terverifikasi, `M3b`: sebagian — IK 1 pemain terukur, sinkron 2 pemain manual, `M5`: sebagian A selesai & B–E belum, `M6` & `M7`: belum divalidasi ulang).
+    - Menyinkronkan `D-10`, `D-11`, `D-17`, `D-19` di `DECISIONS.md` dan `WORLD_ART_AUDIO.md` dengan ukuran nyata (`6.6×6.6` stud meja, kursi `3.55` stud) dan baseline **297 BaseParts**.
+  - **5 & 6. Pengujian Isolasi Multi-Meja (`src/tests/MultiTableTests.luau`) & Parameterisasi `TestRunner.runAll`**:
+    - Memperketat `GameService.SendStateSync` agar menolak pengiriman lintas meja, dan `TableService.StandPlayer` agar mengirim `SendClearStateSync` saat pemain berdiri/pindah meja.
+    - Menulis `MultiTableTests.luau` (MT01–MT05) dan memparameterisasi `TestRunner.runAll(simRounds)` (cepat `1.000`, penuh `10.000`).
+- **Hasil tes (tempel output asli dari Studio Play Server DataModel pasca Langkah 1c)**:
+  ```
+  ==================================================
+  [TestRunner] HASIL LENGKAP RUN ALL TESTS (FINAL STABILISASI V2)
+  ==================================================
+  M0: 25/25 lulus (Gagal: 0)
+  L01-L30: 30/30 lulus (Gagal: 0)
+  BoardLayout (M2 + 1c): 8 lulus, 0 gagal
+    [PASS] U01_DeterministicOutput
+    [PASS] U02_WorstCase28Cards_NoOverlap
+    [PASS] U02_WorstCase28Cards_WithinTableBounds
+    [PASS] U03_DoubleHeavyChain_NoOverlap
+    [PASS] U04_Fuzz1000Games_ZeroOverlap
+    [PASS] U04_Fuzz1000Games_BoundsValid
+    [PASS] U06_NoTileOverhangsTableTop
+    [PASS] U05_MaxTossDistanceRespected
+  M3a (Duduk & Kamera): 8 lulus, 0 gagal
+  M3b (Spike IK Nyata pada Meja 6.6x6.6): Hasil Spike IK Nyata: Jangkauan target dekat = 12/12 (100.0%). Penetrasi meja maks = 0.17 stud. Delta determinisme rig = 0.000 stud. Sinkron 2 Pemain = TIDAK-BISA-DIJALANKAN (Uji jaringan 2 pemain membutuhkan Local Server 2 Players manual). Keputusan: LAYAK DENGAN SYARAT (TOSS UNTUK TITIK JAUH).
+  M3c (Kartu 3D, Rak, Papan, Interaksi): 7 lulus, 0 gagal
+  M4 (Game Penuh, Jaringan, Bot, Keamanan): 9 lulus, 0 gagal
+  M5a (Feel Grup A): 7 lulus, 0 gagal
+  M6 (Lobi, UX, Onboarding, Pengaturan): 7 lulus, 0 gagal
+  M7 (Audit Keamanan, Performa, Endurance 200 Game, Bot): 8 lulus, 0 gagal
+  MultiTable & Emote Isolation: 5 lulus, 0 gagal
+    [PASS] MT01_TableAEventsAndStateSyncNeverSentToTableB (Meja1_Events=2, Meja1_Sync=1, BocorKeMeja2=0)
+    [PASS] MT02_NoHandOrTokenLeakAcrossTables (validMeja1=true, validMeja2=true, noCrossSeatToken=true)
+    [PASS] MT03_StalledTableDoesNotBlockOtherTables (Meja1_Placed=0 (menunggu manusia), Meja2_Placed=15 (Ronde=2))
+    [PASS] MT04_MovingTablesCleansUpOldStateAndIsolatesNewTable (clearSync=true, botTakeover=true, newTable=2/Seat=3, table2Sync=true, leakFromT1=0)
+    [PASS] MT05_EmoteSystemCooldownBubbleAndTableIsolation (cfg=true, clientCD=true, botCD=(true,false,true), Meja1Recv=2, Meja2Recv=0, bubble=true)
+  Simulasi Cepat 2v2 (1.000 ronde): invariantsPassed=true, elapsed=0.30s, avgRounds=9.17, blocked=24.2%, emptied=75.8%
+  Simulasi Cepat Solo (1.000 ronde): invariantsPassed=true, elapsed=0.29s, avgRounds=14.49, blocked=24.2%, emptied=75.8%
+  Simulasi Penuh 2v2 (10.000 ronde): invariantsPassed=true, elapsed=2.74s, avgRounds=9.13, blocked=25.0%, emptied=75.0%, reshuffleR2=0.336%
+  Simulasi Penuh Solo (10.000 ronde): invariantsPassed=true, elapsed=2.69s, avgRounds=15.17, blocked=24.5%, emptied=75.5%, reshuffleR2=0.246%
+  ```
+- **Masalah**: Semua bug geometri meja vs papan dan pengukuran IK telah diselesaikan.
+- **Langkah berikut**:
+  - Melanjutkan penyelesaian sisa item **Milestone M5** (Grup B–E: Kamera & UI polish lanjutan, Ronde & Game, Suasana Pos Ronda, dan integrasi Asset ID Audio/Animasi) atau validasi ulang M6/M7 sesuai instruksi pengguna.
+- **TUGAS MANUAL PENGGUNA**:
+  1. **Uji Sinkronisasi IK & Emote 2 Pemain (Local Server 2 Players)**:
+     - Di Roblox Studio, buka tab **Test** -> pilih **2 Players** -> klik **Start**.
+     - Dudukkan kedua pemain di **Meja 1** (Kursi 1 dan Kursi 2).
+     - Klik tombol emote `😊` (atau tekan `G`), pilih salah satu dari 6 emote (mis. Tertawa / Tepuk Tangan), dan pastikan gelembung emoji serta gestur tangan terlihat sinkron di layar kedua pemain, tetapi tidak muncul di meja lain.
+- **Pertanyaan keputusan**: Tidak ada pertanyaan terbuka (semua telah diputuskan).
+
+### Sesi M5 Grup B (Kamera dan UI) — 20 Oktober 2026
+- **Dikerjakan**:
+  - **Konfigurasi Terpusat (`src/shared/FeelConfig.luau` & `src/client/SettingsController.luau`)**:
+    - Menambahkan `FeelConfig.CAMERA_FEEL` (amplitudo & periode napas kamera, jarak/sudut/durasi/antisipasi condong giliran, rentang durasi shake `0.15–0.25s`, dan FOV punch) serta `FeelConfig.UI_FEEL` (durasi & interval tick skor menghitung naik, durasi slide-in/hold/fade-out notifikasi tengah atas, ukuran/denyut `BillboardGui` indikator giliran 3D + sorotan meja + angkat tipis kartu sah di rak `0.07` stud, serta ambang peringatan waktu `<= 10` detik & kedipan lampu meja).
+    - Menyinkronkan `FeelConfig.USER_SETTINGS.QUALITY_TIER` (`1=Low`, `2=Medium`, `3=High`) di `SettingsController.luau`.
+  - **Mesin Rasa Kamera (`src/client/CameraFX.luau` & `src/client/CameraController.luau`)**:
+    - Membangun `CameraFX.luau` untuk menghitung offset frame gabungan: (1) Napas kamera sinusoidal pelan (`Y ±0.018` stud, `Pitch ±0.35°`, periode `3.6s`), (2) Condong saat giliran (`SetTurnLean(active)` maju `0.15` stud & tunduk `-2.5°` dengan antisipasi tarik napas mikro dan easing `Quad Out` / `Sine InOut`), (3) Camera Shake (`0.15–0.25s`, peluruhan eksponensial, jitter posisi + roll, patuh `REDUCE_SHAKE` & `QUALITY_TIER`), dan (4) FOV Punch (`TriggerFOVPunch`, recovery `Quad Out 0.25s`, patuh `REDUCE_SHAKE`).
+  - **Efek Suara & Lampu Lingkungan (`src/client/SoundManager.luau` & `src/client/TileAnimator.luau`)**:
+    - Menambahkan `SoundManager.PlayTurnTing`, `PlayTimerTick(isCritical)`, dan `PlayScoreTick(stepRatio)` dengan variasi pitch acak `±8%` dan fallback aman saat ID kosong.
+    - Menambahkan `TileAnimator.FlickerLamp` (kedipan bohlam meja sekali saat waktu tersisa menyentuh `10` detik) dan `TileAnimator.SwayLamp`.
+  - **4 Lapisan UI & Rak (`src/client/UIAnimator.luau`, `src/client/UIController.luau`, `src/client/RackView.luau`, `src/client/Main.client.luau`)**:
+    - **Skor Menghitung Naik**: `UIController.TriggerScoreCountUp` & `UIAnimator.CountNumber` menggulirkan angka skor secara non-linear (`Quad Out`), memutar `score_tick` bertempo, memicu denyut skala `1.12x` + warna emas, dan mengayunkan tipis bohlam lampu.
+    - **Notifikasi Tengah Atas**: `UIController.ShowNotification` menampilkan banner slide-in (`Back Out 0.25s`) dan keluar (`Quad In 0.25s`) untuk `"Giliranmu!"`, `"<Nama> pas (ketuk meja)"`, dan `"Kocok ulang: tidak ada balak pembuka"`.
+    - **Indikator Giliran 3D**: `BillboardGui` (`TurnIndicatorBillboard`) berisi nama + cincin timer berdenyut di atas kepala pemain aktif + sorotan cincin neon halus di meja (`TurnTableSpotlight`) + bunyi `turn_ting` + kartu yang sah dimainkan di rak lokal terangkat tipis (`RackView:HighlightPlayableTiles`, `+0.07` stud).
+    - **Peringatan Waktu (`<= 10` detik)**: `UIController.TriggerTimeWarning` memutar `timer_tick` setiap detik, mengubah cincin 3D & teks timer menjadi merah cabai berdenyut (`1.14x`), dan mengedipkan lampu meja sekali (`TileAnimator.FlickerLamp`).
+  - **Panel Dev `src/dev/FeelLab.luau` & Unit Test `src/tests/M5bFeelTests.luau`**:
+    - Memperluas `FeelLab.luau` dengan 6 tombol pemicu Grup B (`Condong Giliran Toggle`, `Shake + FOV Punch`, `Skor Menghitung Naik`, `Notifikasi Slide-In`, `Indikator Giliran 3D + Ting`, `Peringatan Waktu 10s + Kedip`) serta 5 stepper live parameter Grup B dan ekspor konsol.
+    - Menulis `M5bFeelTests.luau` (FB01–FB08) dan mendaftarkannya di `TestRunner.runAll`.
+- **Hasil tes (tempel output asli dari Studio Play Server & Client DataModel)**:
+  ```
+  M0: 25/25 PASS (failed=0)
+  L01-L30: 30/30 PASS (failed=0)
+  BoardLayout: 8 PASS, 0 FAIL
+  M3a: 8 PASS, 0 FAIL
+  M3b: LAYAK DENGAN SYARAT (TOSS UNTUK TITIK JAUH) (syncDelta=0.000)
+  M3c: 7 PASS, 0 FAIL
+  M4: 9 PASS, 0 FAIL
+  M5a: 7 PASS, 0 FAIL
+  M5b: 8 PASS, 0 FAIL
+    [PASS] FB01_FourLayersChecklistGroupB
+    [PASS] FB02_CameraBreathingAndTurnLean
+    [PASS] FB03_ShakeAndFovPunchRespectReduceShake
+    [PASS] FB04_GroupBSoundSlotsSafeFallback
+    [PASS] FB05_ScoreCountUpAndNotificationTween
+    [PASS] FB06_RackViewHighlightPlayableTilesOnTurn
+    [PASS] FB07_TimeWarning10sAndLampFlicker
+    [PASS] FB08_FeelLabGroupBIntegration
+  M6: 7 PASS, 0 FAIL
+  M7: 8 PASS, 0 FAIL
+  MultiTable: 5 PASS, 0 FAIL
+  Sim 2v2 (1000): invariantsPassed=true (0.34s)
+  Sim Solo (1000): invariantsPassed=true (0.34s)
+  Client Verification: FeelLabGui=true (Buttons=16) | PosRondaUI=true | TurnBillboard=true | TableMarker=true | HighTier(DustParticles=25) | LowTier(DustParticles=0)
+  ```
+- **Masalah**: Tidak ada error/warning baru di Output Studio.
+- **Langkah berikut**:
+  - Melanjutkan **Sesi M5 berikutnya: Grup C (Sisa Idle & Reaksi Karakter/Bot)**: idle karakter (seruput kopi, kipas badan, garuk kepala), reaksi giliran lama (>10 detik menoleh), dan reaksi bot kontekstual.
+- **TUGAS MANUAL PENGGUNA**:
+  1. Cari/buat dan unggah 3 aset audio Grup B (`turn_ting`, `timer_tick`, `score_tick`) ke Roblox Creator Store, lalu masukkan `rbxassetid://...` ke `FeelConfig.SOUNDS` di `src/shared/FeelConfig.luau`.
+  2. Aktifkan `ENABLE_FEEL_LAB = true` di `src/dev/DebugConfig.luau`, jalankan Play Solo, dan uji rasa 6 tombol Grup B di panel `FEEL LAB: GRUP A & B`.
+- **Pertanyaan keputusan**: Tidak ada blocker; evaluasi rasa diserahkan pada playtest pengguna di FeelLab.
+
+### Sesi M5 Grup C (Emote, Idle Karakter, Reaksi Giliran Lama, & Reaksi Bot) — 20 Oktober 2026
+- **Dikerjakan**:
+  - **Konfigurasi `FeelConfig.CHARACTER_FEEL` (`src/shared/FeelConfig.luau`)**:
+    - Menambahkan parameter interval idle berkala (`10.0–20.0` detik), daftar aksi idle (`sip_coffee`, `fan_self`, `scratch_head`), durasi tiap aksi, partikel uap kopi (`COFFEE_STEAM_BURST = 6`), ambang reaksi giliran lama (`LONG_TURN_THRESHOLD = 10.0s`), sudut maksimal kepala menoleh (`HEAD_LOOK_MAX_YAW_DEG = 38.0°`), serta peluang reaksi bot (`BOT_OPPONENT_PASS_LAUGH_CHANCE = 0.35`, `BOT_ROUND_END_REACT_CHANCE = 0.65`).
+  - **Rig R15 Bot di Kursi & Reaksi Kontekstual Bot (`src/server/TableService.luau` & `src/server/GameService.luau`)**:
+    - `TableService.SetSeatBot` kini otomatis memunculkan model karakter R15 bot (`Players:CreateHumanoidModelFromDescription`, pakaian khas warga pos ronda per kursi) yang duduk di kursi bot dan dibersihkan otomatis saat bot dihapus/reset.
+    - `GameService.PassTurn` dan `handleRoundEnd` memicu reaksi emote bot kontekstual dengan menghormati `BOT_COOLDOWN`: bot tertawa saat lawan terpaksa pas, serta tepuk tangan/tertawa saat timnya menang ronde atau sedih/"yah!" saat kalah ronde.
+  - **Variasi Idle 4 Lapisan & Reaksi Giliran Lama Menoleh (`src/client/HandController.luau`, `src/client/EmoteController.luau`, `src/client/TileAnimator.luau`, `src/client/SoundManager.luau`, `src/client/Main.client.luau`)**:
+    - `HandController:PlayIdleAction(actionName)`: Menggerakkan tangan via IKControl + memutar slot animasi (`Sip_Coffee`, `Fan_Self`, `Sit_Idle_Breath`) untuk (1) meraih & menyeruput `GelasKopi` di meja, (2) mengipas badan 3 kali di depan dada, dan (3) menggaruk kepala 2 kali.
+    - `HandController:LookAtSeat(targetWorldPos)`: Menolehkan kepala (`Neck.Transform` + `IKControl` `LookAt`) ke arah kursi yang berpikir $> 10$ detik dan mengembalikannya ke tengah meja saat giliran berpindah.
+    - `EmoteController.TriggerIdleVariation` & `TriggerLongTurnReaction`: Menjalankan loop otomatis tiap `10–20` detik untuk kursi yang sedang tidak bergiliran, mendeteksi giliran $> 10$ detik, serta memperbaiki pembuatan tombol UI `PosRondaEmoteGui` agar sesuai tanda tangan argumen `UITheme.CreateButton`.
+    - `Main.client.luau`: Menyinkronkan `HandController` untuk seluruh kursi di meja aktif termasuk rig R15 bot (`syncTableHandControllers`).
+  - **Panel Dev `src/dev/FeelLab.luau` & Unit Test `src/tests/M5cFeelTests.luau`**:
+    - Menambahkan 6 tombol pemicu Grup C (`Demo 6 Emote`, `Idle: Seruput Kopi + Uap`, `Idle: Kipas Badan`, `Idle: Garuk Kepala`, `Reaksi Giliran Lama Menoleh`, `Reaksi Bot Kontekstual`) dan 4 stepper parameter ke `FeelLab`.
+    - Menulis `M5cFeelTests.luau` (`FC01`–`FC07`) dan mengintegrasikannya ke `TestRunner.runAll`.
+- **Hasil tes (tempel output asli dari Studio Play Server & Client DataModel)**:
+  ```
+  M0: 25/25 PASS (failed=0)
+  L01-L30: 30/30 PASS (failed=0)
+  BoardLayout: 8 PASS, 0 FAIL
+  M3a: 8 PASS, 0 FAIL
+  M3b: LAYAK DENGAN SYARAT (TOSS UNTUK TITIK JAUH) (syncDelta=0.000)
+  M3c: 7 PASS, 0 FAIL
+  M4: 9 PASS, 0 FAIL
+  M5a: 7 PASS, 0 FAIL
+  M5b: 8 PASS, 0 FAIL
+  M5c: 7 PASS, 0 FAIL
+    [PASS] FC01_FourLayersChecklistGroupC
+    [PASS] FC02_EmoteWheelSixItemsAndCooldown
+    [PASS] FC03_IdleVariationsCoffeeFanScratch
+    [PASS] FC04_LongTurnHeadLookReaction
+    [PASS] FC05_BotR15RigAndContextualReactions
+    [PASS] FC06_GroupCSoundAndSteamSafeFallback
+    [PASS] FC07_FeelLabGroupCIntegration
+  M6: 7 PASS, 0 FAIL
+  M7: 8 PASS, 0 FAIL
+  MultiTable: 5 PASS, 0 FAIL
+  Sim 2v2 (1000): invariantsPassed=true (0.31s)
+  Sim Solo (1000): invariantsPassed=true (0.30s)
+  Client Verification: EmoteGui=true | GroupC Actions=(sip_coffee, fan_self, scratch_head) | HighTier(CoffeeSteam=6) | LowTier(CoffeeSteam=0)
+  ```
+- **Masalah**: Ditemukan dan diperbaiki pemanggilan `UITheme.CreateButton` di `EmoteController.luau` yang sebelumnya memakai tabel argumen sehingga `PosRondaEmoteGui` gagal dibuat saat runtime client; kini `PosRondaEmoteGui` tampil dan berfungsi penuh.
+- **Langkah berikut**:
+  - Melanjutkan **Sesi M5 berikutnya: Grup D (Suasana dan Audio)**: ambience berlapis (jangkrik, radio warung, angin malam, kentongan), bohlam berayun + ngengat, uap kopi kontinu, kunang-kunang taman, mixing grup suara, ducking, dan varian acak.
+- **TUGAS MANUAL PENGGUNA**:
+  1. Unggah aset suara emote (`emote_laugh`, `emote_angry`, `emote_sad`, `emote_yah`, `emote_clap`, `emote_taunt`) dan animasi opsional (`Sip_Coffee`, `Fan_Self`, `Emote_Laugh`..`Emote_Taunt`) ke Roblox Creator Store, lalu tempelkan ID-nya ke `FeelConfig.SOUNDS` dan `FeelConfig.ANIMATIONS` di `src/shared/FeelConfig.luau`.
+  2. Uji rasa tombol-tombol Grup C di `FeelLab` (`ENABLE_FEEL_LAB = true` di `src/dev/DebugConfig.luau`).
+- **Pertanyaan keputusan**: Tidak ada pertanyaan terbuka.
+
+
+
+laporan dibuat

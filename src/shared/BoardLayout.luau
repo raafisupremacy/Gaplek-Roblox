@@ -21,10 +21,15 @@ BoardLayout.TILE_LENGTH = 1.0
 BoardLayout.TILE_WIDTH = 0.5
 BoardLayout.TILE_THICKNESS = 0.15
 
--- Parameter tata letak meja (stud)
-BoardLayout.LANE_SPACING_Z = 1.10
-BoardLayout.X_LIMIT = 2.90
-BoardLayout.BOARD_ZONE_SIZE = Vector3.new(7.0, 0.15, 5.6)
+-- Dimensi meja kotak gaplek & kursi bakso (stud) — Opsi 1 (Stabilisasi v2)
+BoardLayout.TABLE_SIZE = Vector3.new(6.6, 0.28, 6.6)
+BoardLayout.TABLE_HALF_EXTENT = 3.30
+BoardLayout.SEAT_DISTANCE = 3.55
+
+-- Parameter tata letak zona papan (stud)
+BoardLayout.LANE_SPACING_Z = 1.02
+BoardLayout.X_LIMIT = 2.40
+BoardLayout.BOARD_ZONE_SIZE = Vector3.new(5.6, 0.15, 5.9)
 BoardLayout.MAX_TOSS_DISTANCE = 4.0
 
 --[=[
@@ -36,10 +41,44 @@ function BoardLayout.GetTileSize(): Vector3
 end
 
 --[=[
+	Mengembalikan ukuran fisik daun meja (TableTop).
+]=]
+function BoardLayout.GetTableSize(): Vector3
+	return BoardLayout.TABLE_SIZE
+end
+
+--[=[
+	Mengembalikan setengah lebar/panjang daun meja dari pusat (tepi meja).
+]=]
+function BoardLayout.GetTableHalfExtent(): number
+	return BoardLayout.TABLE_HALF_EXTENT
+end
+
+--[=[
+	Mengembalikan jarak kursi dari pusat meja.
+]=]
+function BoardLayout.GetSeatDistance(): number
+	return BoardLayout.SEAT_DISTANCE
+end
+
+--[=[
 	Mengembalikan ukuran zona barisan di meja.
 ]=]
 function BoardLayout.GetBoardZone(): Vector3
 	return BoardLayout.BOARD_ZONE_SIZE
+end
+
+--[=[
+	Menghitung batas terluar (half-extents X dan Z di dunia) dari sebuah kartu pada CFrame tertentu.
+]=]
+function BoardLayout.GetTileWorldHalfExtents(cf: CFrame, tileSize: Vector3?): (number, number)
+	local sz = tileSize or BoardLayout.GetTileSize()
+	local hx = sz.X / 2
+	local hz = sz.Z / 2
+	local _, rotY, _ = cf:ToOrientation()
+	local cosY = math.abs(math.cos(rotY))
+	local sinY = math.abs(math.sin(rotY))
+	return cosY * hx + sinY * hz, sinY * hx + cosY * hz
 end
 
 --[=[
@@ -187,6 +226,34 @@ function BoardLayout.Calculate(placed: { Placed }, tableSurfaceY: number?): { [n
 		local p = placed[i]
 		local arm = if p.side == "right" then rightArm else leftArm
 		cframes[i] = advanceArm(arm, p)
+	end
+
+	-- 3. Auto-centering XZ: pusatkan bounding box seluruh barisan agar tidak berat sebelah
+	--    atau meluber keluar meja saat rantai tumbuh asimetris di satu sisi saja.
+	local tileSize = BoardLayout.GetTileSize()
+	local minEdgeX = math.huge
+	local maxEdgeX = -math.huge
+	local minEdgeZ = math.huge
+	local maxEdgeZ = -math.huge
+
+	for i = 1, #cframes do
+		local cf = cframes[i]
+		local extX, extZ = BoardLayout.GetTileWorldHalfExtents(cf, tileSize)
+		local px = cf.Position.X
+		local pz = cf.Position.Z
+		if px - extX < minEdgeX then minEdgeX = px - extX end
+		if px + extX > maxEdgeX then maxEdgeX = px + extX end
+		if pz - extZ < minEdgeZ then minEdgeZ = pz - extZ end
+		if pz + extZ > maxEdgeZ then maxEdgeZ = pz + extZ end
+	end
+
+	local shiftX = -(minEdgeX + maxEdgeX) / 2
+	local shiftZ = -(minEdgeZ + maxEdgeZ) / 2
+	if math.abs(shiftX) > 0.0001 or math.abs(shiftZ) > 0.0001 then
+		local offset = Vector3.new(shiftX, 0, shiftZ)
+		for i = 1, #cframes do
+			cframes[i] = cframes[i] + offset
+		end
 	end
 
 	return cframes

@@ -28,8 +28,10 @@ export type HandControllerType = {
 	animator: Animator,
 	leftIK: IKControl?,
 	rightIK: IKControl?,
+	headLookIK: IKControl?,
 	leftTarget: BasePart?,
 	rightTarget: BasePart?,
+	headLookTarget: BasePart?,
 	leftPole: BasePart?,
 	rightPole: BasePart?,
 	leftRestPos: Vector3,
@@ -43,6 +45,9 @@ export type HandControllerType = {
 	Grab: (self: HandControllerType, tileInstance: Instance?, hand: HandSide?) -> (),
 	Move: (self: HandControllerType, tileInstance: Instance?, fromPos: Vector3, toPos: Vector3, duration: number?) -> (),
 	Place: (self: HandControllerType, tileInstance: Instance?, targetCFrame: CFrame, isSlam: boolean?) -> (),
+	Gesture: (self: HandControllerType, emoteId: string) -> (),
+	PlayIdleAction: (self: HandControllerType, actionName: string) -> (),
+	LookAtSeat: (self: HandControllerType, targetWorldPos: Vector3?) -> (),
 	GetHandPosition: (self: HandControllerType, hand: HandSide) -> Vector3?,
 	Destroy: (self: HandControllerType) -> (),
 }
@@ -116,6 +121,30 @@ function HandController.new(seatIndex: number, character: Model): HandController
 	self.leftRestPos = (baseCFrame * CFrame.new(-0.8, -0.2, -1.2)).Position
 	self.rightRestPos = (baseCFrame * CFrame.new(0.8, -0.2, -1.2)).Position
 
+	-- Simpan Neck Motor6D & buat IKControl LookAt kepala untuk reaksi menoleh saat giliran lama (Grup C)
+	local head = character:FindFirstChild("Head") :: BasePart?
+	local upperTorso = character:FindFirstChild("UpperTorso") :: BasePart?
+	local neck = head and head:FindFirstChild("Neck") :: Motor6D?
+	self.neckMotor = neck
+
+	if head and upperTorso then
+		local hTarget = createInvisibleTarget(string.format("HeadLookTarget_Seat%d", seatIndex), targetFolder)
+		hTarget.CFrame = baseCFrame * CFrame.new(0, 1.5, -3.0)
+		self.headLookTarget = hTarget
+
+		local headIK = Instance.new("IKControl")
+		headIK.Name = string.format("HeadLookIK_Seat%d", seatIndex)
+		headIK.Type = Enum.IKControlType.LookAt
+		headIK.ChainRoot = head
+		headIK.EndEffector = head
+		headIK.Target = hTarget
+		headIK.Weight = 0.0
+		headIK.Enabled = false -- Hanya diaktifkan saat menoleh giliran lama agar tidak memengaruhi IK lengan di UpperTorso
+		headIK.SmoothTime = 0.25
+		headIK.Parent = animator
+		self.headLookIK = headIK
+	end
+
 	-- Buat target & pole parts untuk tangan kiri
 	if leftUpperArm and leftHand then
 		local lTarget = createInvisibleTarget(string.format("LeftTarget_Seat%d", seatIndex), targetFolder)
@@ -123,12 +152,12 @@ function HandController.new(seatIndex: number, character: Model): HandController
 		self.leftTarget = lTarget
 
 		local lPole = createInvisibleTarget(string.format("LeftPole_Seat%d", seatIndex), targetFolder)
-		lPole.CFrame = baseCFrame * CFrame.new(-1.6, 0.4, 0.2)
+		lPole.CFrame = baseCFrame * CFrame.new(-1.8, 0.8, -0.6)
 		self.leftPole = lPole
 
 		local leftIK = Instance.new("IKControl")
 		leftIK.Name = string.format("LeftArmIK_Seat%d", seatIndex)
-		leftIK.Type = Enum.IKControlType.Transform
+		leftIK.Type = Enum.IKControlType.Position
 		leftIK.ChainRoot = leftUpperArm
 		leftIK.EndEffector = leftHand
 		leftIK.Target = lTarget
@@ -146,12 +175,12 @@ function HandController.new(seatIndex: number, character: Model): HandController
 		self.rightTarget = rTarget
 
 		local rPole = createInvisibleTarget(string.format("RightPole_Seat%d", seatIndex), targetFolder)
-		rPole.CFrame = baseCFrame * CFrame.new(1.6, 0.4, 0.2)
+		rPole.CFrame = baseCFrame * CFrame.new(1.8, 0.8, -0.6)
 		self.rightPole = rPole
 
 		local rightIK = Instance.new("IKControl")
 		rightIK.Name = string.format("RightArmIK_Seat%d", seatIndex)
-		rightIK.Type = Enum.IKControlType.Transform
+		rightIK.Type = Enum.IKControlType.Position
 		rightIK.ChainRoot = rightUpperArm
 		rightIK.EndEffector = rightHand
 		rightIK.Target = rTarget
@@ -445,6 +474,301 @@ function HandController:Shuffle(centerPos: Vector3, duration: number?)
 end
 
 --[=[
+	Gestur tangan dan animasi tubuh untuk ekspresi emote (FIRST_PERSON_HANDS.md §4, GAME_FEEL.md §4).
+	Mendukung: "laugh", "angry", "sad", "yah", "clap", "taunt".
+]=]
+function HandController:Gesture(emoteId: string)
+	if self.isDestroyed then return end
+
+	if self.idleConnection then
+		self.idleConnection:Disconnect()
+		self.idleConnection = nil
+	end
+
+	-- 1. Coba jalankan animasi bawaan / kustom jika tersedia
+	if emoteId == "laugh" then
+		pcall(function()
+			self.humanoid:PlayEmote("laugh")
+		end)
+	end
+
+	local emoteCfg = FeelConfig.EMOTE and FeelConfig.EMOTE.ITEMS and FeelConfig.EMOTE.ITEMS[emoteId]
+	if emoteCfg and emoteCfg.animSlot then
+		local animId = FeelConfig.GetAnimation(emoteCfg.animSlot)
+		if animId and animId ~= "" then
+			pcall(function()
+				local anim = Instance.new("Animation")
+				anim.AnimationId = animId
+				local track = self.animator:LoadAnimation(anim)
+				track.Priority = Enum.AnimationPriority.Action
+				track:Play()
+				task.delay(FeelConfig.EMOTE.GESTURE_DURATION, function()
+					track:Stop()
+					anim:Destroy()
+				end)
+			end)
+		end
+	end
+
+	-- 2. Gestur prosedural tangan via IKControl agar selalu terlihat hidup di POV
+	local lTarget = self.leftTarget
+	local rTarget = self.rightTarget
+	local dur = (FeelConfig.EMOTE and FeelConfig.EMOTE.GESTURE_DURATION) or 0.9
+	local lBase = self.leftRestPos
+	local rBase = self.rightRestPos
+	local midChest = (lBase + rBase) / 2 + Vector3.new(0, 0.35, 0)
+
+	task.spawn(function()
+		if emoteId == "clap" and lTarget and rTarget then
+			for _ = 1, 3 do
+				if self.isDestroyed then break end
+				TweenService:Create(lTarget, TweenInfo.new(dur / 6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = CFrame.new(midChest + Vector3.new(-0.35, 0, 0)),
+				}):Play()
+				TweenService:Create(rTarget, TweenInfo.new(dur / 6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = CFrame.new(midChest + Vector3.new(0.35, 0, 0)),
+				}):Play()
+				task.wait(dur / 6)
+				if self.isDestroyed then break end
+				TweenService:Create(lTarget, TweenInfo.new(dur / 6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+					CFrame = CFrame.new(midChest + Vector3.new(-0.08, 0, 0)),
+				}):Play()
+				TweenService:Create(rTarget, TweenInfo.new(dur / 6, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+					CFrame = CFrame.new(midChest + Vector3.new(0.08, 0, 0)),
+				}):Play()
+				task.wait(dur / 6)
+			end
+		elseif emoteId == "angry" and rTarget then
+			-- Kepal & hentak ringan di tepi meja
+			local upCF = CFrame.new(rBase + Vector3.new(0, 0.45, 0))
+			TweenService:Create(rTarget, TweenInfo.new(dur * 0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { CFrame = upCF }):Play()
+			task.wait(dur * 0.35)
+			if not self.isDestroyed then
+				TweenService:Create(rTarget, TweenInfo.new(dur * 0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = CFrame.new(rBase) }):Play()
+				task.wait(dur * 0.4)
+			end
+		elseif (emoteId == "yah" or emoteId == "sad") and lTarget and rTarget then
+			-- Angkat kedua tangan sedikit lalu turun lesu
+			local lift = if emoteId == "yah" then 0.40 else 0.20
+			TweenService:Create(lTarget, TweenInfo.new(dur * 0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = CFrame.new(lBase + Vector3.new(0, lift, 0)),
+			}):Play()
+			TweenService:Create(rTarget, TweenInfo.new(dur * 0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = CFrame.new(rBase + Vector3.new(0, lift, 0)),
+			}):Play()
+			task.wait(dur * 0.45)
+			if not self.isDestroyed then
+				TweenService:Create(lTarget, TweenInfo.new(dur * 0.5, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), { CFrame = CFrame.new(lBase) }):Play()
+				TweenService:Create(rTarget, TweenInfo.new(dur * 0.5, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), { CFrame = CFrame.new(rBase) }):Play()
+				task.wait(dur * 0.5)
+			end
+		elseif emoteId == "taunt" and rTarget then
+			-- Lambaian tangan mengejek kiri-kanan
+			for i = 1, 3 do
+				if self.isDestroyed then break end
+				local dir = if i % 2 == 1 then 0.25 else -0.25
+				TweenService:Create(rTarget, TweenInfo.new(dur / 4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					CFrame = CFrame.new(rBase + Vector3.new(dir, 0.35, 0)),
+				}):Play()
+				task.wait(dur / 4)
+			end
+		else
+			-- "laugh" atau default: bahu/tangan berguncang naik-turun riang
+			for _ = 1, 4 do
+				if self.isDestroyed then break end
+				if lTarget then lTarget.CFrame = CFrame.new(lBase + Vector3.new(0, 0.12, 0)) end
+				if rTarget then rTarget.CFrame = CFrame.new(rBase + Vector3.new(0, 0.12, 0)) end
+				task.wait(dur / 8)
+				if self.isDestroyed then break end
+				if lTarget then lTarget.CFrame = CFrame.new(lBase) end
+				if rTarget then rTarget.CFrame = CFrame.new(rBase) end
+				task.wait(dur / 8)
+			end
+		end
+
+		if not self.isDestroyed then
+			self:Idle()
+		end
+	end)
+end
+
+--[=[
+	Menjalankan aksi variasi idle berkala (Grup C — GAME_FEEL.md §4, FIRST_PERSON_HANDS.md §4):
+	Mendukung:
+	- "sip_coffee"   : tangan kanan meraih gelas kopi di meja, mengangkat ke mulut, lalu menaruh kembali.
+	- "fan_self"     : tangan kanan mengipas badan 3 kali di depan dada.
+	- "scratch_head" : tangan kiri naik menggaruk sisi kepala 2 kali lalu kembali istirahat.
+]=]
+function HandController:PlayIdleAction(actionName: string)
+	if self.isDestroyed then return end
+
+	if self.idleConnection then
+		self.idleConnection:Disconnect()
+		self.idleConnection = nil
+	end
+
+	local charFeel = FeelConfig.CHARACTER_FEEL
+	local lTarget = self.leftTarget
+	local rTarget = self.rightTarget
+	local lBase = self.leftRestPos
+	local rBase = self.rightRestPos
+	local hrp = self.character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local head = self.character:FindFirstChild("Head") :: BasePart?
+
+	-- Putar slot animasi jika sudah diunggah pengguna
+	local animSlot = if actionName == "sip_coffee"
+		then "Sip_Coffee"
+		elseif actionName == "fan_self" then "Fan_Self"
+		else "Sit_Idle_Breath"
+	local animId = FeelConfig.GetAnimation(animSlot)
+	if animId and animId ~= "" then
+		pcall(function()
+			local anim = Instance.new("Animation")
+			anim.AnimationId = animId
+			local track = self.animator:LoadAnimation(anim)
+			track.Priority = Enum.AnimationPriority.Movement
+			track:Play()
+			task.delay(1.6, function()
+				track:Stop()
+				anim:Destroy()
+			end)
+		end)
+	end
+
+	task.spawn(function()
+		if actionName == "sip_coffee" and rTarget then
+			local dur = charFeel.SIP_COFFEE_DURATION
+			local posRonda = workspace:FindFirstChild("PosRonda")
+			local coffeeCup = posRonda and posRonda:FindFirstChild("GelasKopi", true) :: BasePart?
+
+			local cupOrigCF = if coffeeCup then coffeeCup.CFrame else CFrame.new(rBase + Vector3.new(0.3, 0.1, -0.3))
+			local mouthPos = if head
+				then (head.CFrame * CFrame.new(0.15, -0.25, -0.55)).Position
+				elseif hrp then (hrp.CFrame * CFrame.new(0.15, 1.15, -0.65)).Position
+				else (rBase + Vector3.new(-0.3, 0.85, 0.35))
+
+			-- 1. Raih gelas kopi
+			TweenService:Create(rTarget, TweenInfo.new(dur * 0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = CFrame.new(cupOrigCF.Position + Vector3.new(0, 0.08, 0)),
+			}):Play()
+			task.wait(dur * 0.28)
+			if self.isDestroyed then return end
+
+			-- 2. Angkat ke mulut (gelas kopi ikut naik tipis bila kursi 1/dekat)
+			local liftCup = (coffeeCup ~= nil and (cupOrigCF.Position - rBase).Magnitude <= 2.8)
+			if liftCup and coffeeCup then
+				TweenService:Create(coffeeCup, TweenInfo.new(dur * 0.30, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					CFrame = CFrame.new(mouthPos) * CFrame.Angles(math.rad(-25), 0, 0),
+				}):Play()
+			end
+			TweenService:Create(rTarget, TweenInfo.new(dur * 0.30, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+				CFrame = CFrame.new(mouthPos),
+			}):Play()
+			task.wait(dur * 0.42)
+			if self.isDestroyed then
+				if liftCup and coffeeCup then coffeeCup.CFrame = cupOrigCF end
+				return
+			end
+
+			-- 3. Letakkan kembali gelas kopi ke meja
+			if liftCup and coffeeCup then
+				TweenService:Create(coffeeCup, TweenInfo.new(dur * 0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+					CFrame = cupOrigCF,
+				}):Play()
+			end
+			TweenService:Create(rTarget, TweenInfo.new(dur * 0.30, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = CFrame.new(rBase),
+			}):Play()
+			task.wait(dur * 0.30)
+
+		elseif actionName == "fan_self" and rTarget then
+			local dur = charFeel.FAN_SELF_DURATION
+			local chestFront = (lBase + rBase) / 2 + Vector3.new(0.25, 0.45, 0.15)
+			for i = 1, 3 do
+				if self.isDestroyed then break end
+				local offset = if i % 2 == 1 then Vector3.new(0.22, 0.08, 0) else Vector3.new(-0.18, -0.05, 0)
+				TweenService:Create(rTarget, TweenInfo.new(dur / 3, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					CFrame = CFrame.new(chestFront + offset),
+				}):Play()
+				task.wait(dur / 3)
+			end
+
+		elseif actionName == "scratch_head" and lTarget then
+			local dur = charFeel.SCRATCH_HEAD_DURATION
+			local sideHeadPos = if head
+				then (head.CFrame * CFrame.new(-0.55, 0.15, 0)).Position
+				else (lBase + Vector3.new(0.15, 1.05, 0.25))
+
+			TweenService:Create(lTarget, TweenInfo.new(dur * 0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				CFrame = CFrame.new(sideHeadPos),
+			}):Play()
+			task.wait(dur * 0.35)
+			for _ = 1, 2 do
+				if self.isDestroyed then break end
+				TweenService:Create(lTarget, TweenInfo.new(dur * 0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					CFrame = CFrame.new(sideHeadPos + Vector3.new(0, 0.08, 0)),
+				}):Play()
+				task.wait(dur * 0.15)
+				if self.isDestroyed then break end
+				TweenService:Create(lTarget, TweenInfo.new(dur * 0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
+					CFrame = CFrame.new(sideHeadPos - Vector3.new(0, 0.05, 0)),
+				}):Play()
+				task.wait(dur * 0.15)
+			end
+		end
+
+		if not self.isDestroyed then
+			self:Idle()
+		end
+	end)
+end
+
+--[=[
+	Menolehkan kepala karakter ke arah posisi kursi yang sedang berpikir lama (> 10 detik),
+	atau mengembalikan pandangan ke tengah meja jika targetWorldPos == nil (Grup C — GAME_FEEL.md §4).
+]=]
+function HandController:LookAtSeat(targetWorldPos: Vector3?)
+	if self.isDestroyed then return end
+	local hrp = self.character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not hrp then return end
+
+	local charFeel = FeelConfig.CHARACTER_FEEL
+	local headIK = self.headLookIK :: IKControl?
+	local hTarget = self.headLookTarget :: BasePart?
+	local neck = self.neckMotor :: Motor6D?
+
+	if not targetWorldPos then
+		if headIK then
+			headIK.Weight = 0.0
+			headIK.Enabled = false
+		end
+		if neck then
+			neck.Transform = CFrame.identity
+		end
+		return
+	end
+
+	local localDir = hrp.CFrame:PointToObjectSpace(targetWorldPos)
+	local yawRad = math.atan2(-localDir.X, -localDir.Z)
+	local maxYawRad = math.rad(charFeel.HEAD_LOOK_MAX_YAW_DEG)
+	local clampedYaw = math.clamp(yawRad, -maxYawRad, maxYawRad)
+	local pitchRad = math.rad(charFeel.HEAD_LOOK_PITCH_DEG)
+
+	if hTarget and headIK then
+		hTarget.Position = targetWorldPos
+		headIK.Enabled = true
+		TweenService:Create(
+			headIK,
+			TweenInfo.new(charFeel.HEAD_TURN_IN_TIME, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+			{ Weight = 0.85 }
+		):Play()
+	end
+	if neck then
+		neck.Transform = CFrame.Angles(pitchRad, clampedYaw, 0)
+	end
+end
+
+--[=[
 	Meletakkan kartu di meja (baik pasang biasa maupun hentak/slam).
 ]=]
 function HandController:Place(tileInstance: Instance?, targetCFrame: CFrame, isSlam: boolean?)
@@ -505,6 +829,10 @@ function HandController:Destroy()
 		self.rightIK:Destroy()
 		self.rightIK = nil
 	end
+	if self.headLookIK then
+		self.headLookIK:Destroy()
+		self.headLookIK = nil
+	end
 	if self.leftTarget then
 		self.leftTarget:Destroy()
 		self.leftTarget = nil
@@ -512,6 +840,10 @@ function HandController:Destroy()
 	if self.rightTarget then
 		self.rightTarget:Destroy()
 		self.rightTarget = nil
+	end
+	if self.headLookTarget then
+		self.headLookTarget:Destroy()
+		self.headLookTarget = nil
 	end
 	if self.leftPole then
 		self.leftPole:Destroy()

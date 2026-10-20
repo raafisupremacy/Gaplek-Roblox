@@ -1,17 +1,20 @@
 --!strict
 --[=[
 	M3bSpikeTests.luau
-	Spike eksperimental dan matriks pengukuran jangkauan tangan IKControl.
-	Memenuhi instruksi Sesi M3b, FIRST_PERSON_HANDS.md, dan DECISIONS D-06..D-08.
+	Spike eksperimental dan matriks pengukuran jangkauan tangan IKControl yang SESUNGGUHNYA.
+	Membaca posisi aktual RightHand.Position setelah IKControl diselesaikan oleh engine
+	(dengan menunggu beberapa frame), serta mengukur penembusan lengan ke meja dan badan
+	menggunakan OverlapParams (GetPartBoundsInBox) dan Raycast.
+	Sumber: FIRST_PERSON_HANDS.md, DECISIONS D-06..D-08, Sesi Stabilisasi v2.
 ]=]
 
+local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPlayer = game:GetService("StarterPlayer")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
 local FeelConfig = require(sharedFolder:WaitForChild("FeelConfig"))
-local Remotes = require(sharedFolder:WaitForChild("Remotes"))
 
 local HandControllerModule = require(StarterPlayer.StarterPlayerScripts.Client.HandController)
 
@@ -31,8 +34,29 @@ export type SpikeCellResult = {
 
 local M3bSpikeTests = {}
 
--- Helper pembuat dummy R15 yang valid dengan semua bagian tubuh standar
-local function createR15Dummy(name: string): Model
+-- Helper pembuat rig R15 standar Roblox dengan sendi Motor6D lengkap dan skala tubuh nyata
+local function createScaledR15Rig(name: string, scale: { width: number, depth: number, height: number }): Model
+	local desc = Instance.new("HumanoidDescription")
+	desc.WidthScale = scale.width
+	desc.DepthScale = scale.depth
+	desc.HeightScale = scale.height
+
+	local ok, rig = pcall(function()
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+	desc:Destroy()
+
+	if ok and rig then
+		rig.Name = name
+		for _, p in ipairs(rig:GetDescendants()) do
+			if p:IsA("BasePart") then
+				p.CanCollide = false
+			end
+		end
+		return rig
+	end
+
+	-- Fallback rig R15 lengkap jika CreateHumanoidModelFromDescription gagal
 	local dummy = Instance.new("Model")
 	dummy.Name = name
 
@@ -45,132 +69,180 @@ local function createR15Dummy(name: string): Model
 
 	local hrp = Instance.new("Part")
 	hrp.Name = "HumanoidRootPart"
-	hrp.Size = Vector3.new(2, 2, 1)
+	hrp.Size = Vector3.new(2 * scale.width, 2 * scale.height, 1 * scale.depth)
+	hrp.CanCollide = false
 	hrp.Parent = dummy
 	dummy.PrimaryPart = hrp
 
-	local upperTorso = Instance.new("Part")
-	upperTorso.Name = "UpperTorso"
-	upperTorso.Size = Vector3.new(2, 1.2, 1)
-	upperTorso.Parent = dummy
-
 	local lowerTorso = Instance.new("Part")
 	lowerTorso.Name = "LowerTorso"
-	lowerTorso.Size = Vector3.new(2, 0.8, 1)
+	lowerTorso.Size = Vector3.new(2 * scale.width, 0.4 * scale.height, 1 * scale.depth)
+	lowerTorso.CanCollide = false
 	lowerTorso.Parent = dummy
 
-	local head = Instance.new("Part")
-	head.Name = "Head"
-	head.Size = Vector3.new(1.2, 1.2, 1.2)
-	head.Parent = dummy
+	local upperTorso = Instance.new("Part")
+	upperTorso.Name = "UpperTorso"
+	upperTorso.Size = Vector3.new(2 * scale.width, 1.6 * scale.height, 1 * scale.depth)
+	upperTorso.CanCollide = false
+	upperTorso.Parent = dummy
 
 	local rightUpperArm = Instance.new("Part")
 	rightUpperArm.Name = "RightUpperArm"
-	rightUpperArm.Size = Vector3.new(1, 1.2, 1)
+	rightUpperArm.Size = Vector3.new(1 * scale.width, 1.24 * scale.height, 1 * scale.depth)
+	rightUpperArm.CanCollide = false
 	rightUpperArm.Parent = dummy
 
 	local rightLowerArm = Instance.new("Part")
 	rightLowerArm.Name = "RightLowerArm"
-	rightLowerArm.Size = Vector3.new(0.8, 1.2, 0.8)
+	rightLowerArm.Size = Vector3.new(1 * scale.width, 1.12 * scale.height, 1 * scale.depth)
+	rightLowerArm.CanCollide = false
 	rightLowerArm.Parent = dummy
 
 	local rightHand = Instance.new("Part")
 	rightHand.Name = "RightHand"
-	rightHand.Size = Vector3.new(0.8, 0.6, 0.8)
+	rightHand.Size = Vector3.new(0.98 * scale.width, 0.32 * scale.height, 1.02 * scale.depth)
+	rightHand.CanCollide = false
 	rightHand.Parent = dummy
 
-	local leftUpperArm = Instance.new("Part")
-	leftUpperArm.Name = "LeftUpperArm"
-	leftUpperArm.Size = Vector3.new(1, 1.2, 1)
-	leftUpperArm.Parent = dummy
+	local rootMotor = Instance.new("Motor6D")
+	rootMotor.Name = "Root"
+	rootMotor.Part0 = hrp
+	rootMotor.Part1 = lowerTorso
+	rootMotor.C0 = CFrame.new(0, -0.8 * scale.height, 0)
+	rootMotor.Parent = lowerTorso
 
-	local leftLowerArm = Instance.new("Part")
-	leftLowerArm.Name = "LeftLowerArm"
-	leftLowerArm.Size = Vector3.new(0.8, 1.2, 0.8)
-	leftLowerArm.Parent = dummy
+	local waistMotor = Instance.new("Motor6D")
+	waistMotor.Name = "Waist"
+	waistMotor.Part0 = lowerTorso
+	waistMotor.Part1 = upperTorso
+	waistMotor.C0 = CFrame.new(0, 0.2 * scale.height, 0)
+	waistMotor.C1 = CFrame.new(0, -0.8 * scale.height, 0)
+	waistMotor.Parent = upperTorso
 
-	local leftHand = Instance.new("Part")
-	leftHand.Name = "LeftHand"
-	leftHand.Size = Vector3.new(0.8, 0.6, 0.8)
-	leftHand.Parent = dummy
-
-	-- Buat Motor6D sendi lengan kanan
 	local shoulder = Instance.new("Motor6D")
 	shoulder.Name = "RightShoulder"
 	shoulder.Part0 = upperTorso
 	shoulder.Part1 = rightUpperArm
-	shoulder.C0 = CFrame.new(1.3, 0.4, 0)
+	shoulder.C0 = CFrame.new(0.97 * scale.width, 0.60 * scale.height, 0)
+	shoulder.C1 = CFrame.new(-0.50 * scale.width, 0.42 * scale.height, 0)
 	shoulder.Parent = rightUpperArm
 
 	local elbow = Instance.new("Motor6D")
 	elbow.Name = "RightElbow"
 	elbow.Part0 = rightUpperArm
 	elbow.Part1 = rightLowerArm
-	elbow.C0 = CFrame.new(0, -0.6, 0)
+	elbow.C0 = CFrame.new(0, -0.355 * scale.height, 0)
+	elbow.C1 = CFrame.new(0, 0.275 * scale.height, 0)
 	elbow.Parent = rightLowerArm
 
 	local wrist = Instance.new("Motor6D")
 	wrist.Name = "RightWrist"
 	wrist.Part0 = rightLowerArm
 	wrist.Part1 = rightHand
-	wrist.C0 = CFrame.new(0, -0.6, 0)
+	wrist.C0 = CFrame.new(0, -0.532 * scale.height, 0)
+	wrist.C1 = CFrame.new(0, 0.132 * scale.height, 0)
 	wrist.Parent = rightHand
-
-	-- Buat Motor6D sendi lengan kiri
-	local lShoulder = Instance.new("Motor6D")
-	lShoulder.Name = "LeftShoulder"
-	lShoulder.Part0 = upperTorso
-	lShoulder.Part1 = leftUpperArm
-	lShoulder.C0 = CFrame.new(-1.3, 0.4, 0)
-	lShoulder.Parent = leftUpperArm
-
-	local lElbow = Instance.new("Motor6D")
-	lElbow.Name = "LeftElbow"
-	lElbow.Part0 = leftUpperArm
-	lElbow.Part1 = leftLowerArm
-	lElbow.C0 = CFrame.new(0, -0.6, 0)
-	lElbow.Parent = leftLowerArm
-
-	local lWrist = Instance.new("Motor6D")
-	lWrist.Name = "LeftWrist"
-	lWrist.Part0 = leftLowerArm
-	lWrist.Part1 = leftHand
-	lWrist.C0 = CFrame.new(0, -0.6, 0)
-	lWrist.Parent = leftHand
 
 	return dummy
 end
 
--- Helper penyetelan skala tubuh pada R15
-local function applyBodyScale(dummy: Model, scale: { width: number, depth: number, height: number })
-	local parts = {
-		dummy:FindFirstChild("UpperTorso") :: BasePart?,
-		dummy:FindFirstChild("RightUpperArm") :: BasePart?,
-		dummy:FindFirstChild("RightLowerArm") :: BasePart?,
-		dummy:FindFirstChild("RightHand") :: BasePart?,
-		dummy:FindFirstChild("LeftUpperArm") :: BasePart?,
-		dummy:FindFirstChild("LeftLowerArm") :: BasePart?,
-		dummy:FindFirstChild("LeftHand") :: BasePart?,
-	}
+-- Mengukur penembusan lengan/tangan terhadap daun meja (OverlapParams + Raycast + kedalaman Y)
+local function measureTablePenetration(
+	tableTop: BasePart?,
+	tableSurfaceY: number,
+	rUpper: BasePart?,
+	rLower: BasePart?,
+	rHand: BasePart?
+): number
+	if not tableTop or not rUpper or not rLower or not rHand then
+		return 0
+	end
 
-	for _, p in ipairs(parts) do
-		if p then
-			p.Size = Vector3.new(p.Size.X * scale.width, p.Size.Y * scale.height, p.Size.Z * scale.depth)
+	local armParts: { BasePart } = { rUpper, rLower, rHand }
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Include
+	overlapParams.FilterDescendantsInstances = armParts
+
+	local maxPen = 0
+	local partsInBox = workspace:GetPartBoundsInBox(tableTop.CFrame, tableTop.Size, overlapParams)
+	for _, ap in ipairs(partsInBox) do
+		local bottomY = ap.Position.Y - ap.Size.Y / 2
+		local pen = math.max(0, tableSurfaceY - bottomY)
+		if pen > maxPen then
+			maxPen = pen
 		end
 	end
+
+	-- Cek raycast segmen bahu -> siku dan siku -> tangan terhadap daun meja
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Include
+	rayParams.FilterDescendantsInstances = { tableTop }
+
+	local seg1 = rLower.Position - rUpper.Position
+	if seg1.Magnitude > 0.01 then
+		local hit1 = workspace:Raycast(rUpper.Position, seg1, rayParams)
+		if hit1 then
+			local pen = math.max(0, tableSurfaceY - math.min(rUpper.Position.Y, rLower.Position.Y))
+			if pen > maxPen then
+				maxPen = pen
+			end
+		end
+	end
+
+	local seg2 = rHand.Position - rLower.Position
+	if seg2.Magnitude > 0.01 then
+		local hit2 = workspace:Raycast(rLower.Position, seg2, rayParams)
+		if hit2 then
+			local pen = math.max(0, tableSurfaceY - math.min(rLower.Position.Y, rHand.Position.Y))
+			if pen > maxPen then
+				maxPen = pen
+			end
+		end
+	end
+
+	return maxPen
+end
+
+-- Mengukur apakah telapak tangan (RightHand) menembus torso sendiri
+local function measureBodyOverlap(
+	upperTorso: BasePart?,
+	lowerTorso: BasePart?,
+	_rLower: BasePart?,
+	rHand: BasePart?
+): boolean
+	if not upperTorso or not rHand then
+		return false
+	end
+
+	local overlapBody = OverlapParams.new()
+	overlapBody.FilterType = Enum.RaycastFilterType.Include
+	overlapBody.FilterDescendantsInstances = { rHand }
+
+	local inUpper = workspace:GetPartBoundsInBox(upperTorso.CFrame, upperTorso.Size * 0.85, overlapBody)
+	if #inUpper > 0 then
+		return true
+	end
+
+	if lowerTorso then
+		local inLower = workspace:GetPartBoundsInBox(lowerTorso.CFrame, lowerTorso.Size * 0.85, overlapBody)
+		if #inLower > 0 then
+			return true
+		end
+	end
+
+	return false
 end
 
 --[=[
-	Menjalankan seluruh rangkaian spike pengukuran M3b dan menghasilkan tabel matriks.
+	Menjalankan seluruh rangkaian spike pengukuran M3b secara nyata dan menghasilkan matriks.
 ]=]
 function M3bSpikeTests.RunSpike(): {
 	matrix: { SpikeCellResult },
 	syncDelta: number,
-	syncLatencyMs: number,
+	syncStatus: string,
 	gateResult: string,
 	summaryText: string,
 }
-	-- 1. Pastikan dunia pos ronda tersedia
 	local WorldBuilder = require(ServerScriptService.Server.WorldBuilder)
 	WorldBuilder.Build()
 
@@ -179,10 +251,9 @@ function M3bSpikeTests.RunSpike(): {
 	local seat1 = tbl and tbl:FindFirstChild("Seat1") :: Seat?
 	local tableTop = tbl and tbl:FindFirstChild("TableTop") :: BasePart?
 
-	local tableSurfaceY = if tableTop then tableTop.Position.Y + tableTop.Size.Y / 2 else 4.15
-	local seatPos = if seat1 then seat1.Position else Vector3.new(0, 2.2, 4.35)
+	local tableSurfaceY = if tableTop then tableTop.Position.Y + tableTop.Size.Y / 2 else 4.00
+	local seatPos = if seat1 then seat1.Position else Vector3.new(0, 2.55, 2.65)
 
-	-- Profil tipe tubuh R15
 	local bodyTypes = {
 		{ name = "Kurus", width = 0.80, depth = 0.85, height = 0.95 },
 		{ name = "Normal", width = 1.00, depth = 1.00, height = 1.00 },
@@ -190,83 +261,87 @@ function M3bSpikeTests.RunSpike(): {
 		{ name = "Tinggi", width = 0.95, depth = 0.95, height = 1.15 },
 	}
 
-	-- Titik-titik target pengujian relatif terhadap Kursi 1 (Z = 4.35, menghadap -Z ke arah meja)
+	-- 5 target pengujian relatif terhadap posisi Seat1 dan meja saat ini
+	-- Seat1 berada di +Z menghadap -Z (ke pusat meja 0,0,0), sisi kanan karakter adalah +X.
 	local targets = {
 		{
 			name = "Rak Terdekat",
-			pos = Vector3.new(-0.3, tableSurfaceY + 0.10, 3.35),
+			pos = Vector3.new(0.40, tableSurfaceY + 0.10, seatPos.Z - 0.80),
 			desc = "Slot kartu di depan dada kanan",
 		},
 		{
 			name = "Rak Terjauh",
-			pos = Vector3.new(1.2, tableSurfaceY + 0.10, 3.35),
+			pos = Vector3.new(1.20, tableSurfaceY + 0.10, seatPos.Z - 0.80),
 			desc = "Slot kartu di ujung kanan rak",
 		},
 		{
 			name = "Ujung Dekat",
-			pos = Vector3.new(0.0, tableSurfaceY + 0.05, 2.40),
+			pos = Vector3.new(0.50, tableSurfaceY + 0.05, seatPos.Z - 1.15),
 			desc = "Ujung rantai domino terdekat dengan kursi",
 		},
 		{
 			name = "Ujung Jauh",
-			pos = Vector3.new(1.5, tableSurfaceY + 0.05, 0.80),
+			pos = Vector3.new(1.50, tableSurfaceY + 0.05, -1.00),
 			desc = "Ujung rantai domino di sisi seberang",
 		},
 		{
 			name = "Pusat Meja",
-			pos = Vector3.new(0.0, tableSurfaceY + 0.05, 0.00),
-			desc = "Pusat zona papan (tengah meja 9x9)",
+			pos = Vector3.new(0.00, tableSurfaceY + 0.05, 0.00),
+			desc = "Pusat zona papan (tengah meja)",
 		},
 	}
 
 	local matrixResults: { SpikeCellResult } = {}
 	local nearTargetSuccessCount = 0
 	local nearTargetTotalCount = 0
-
-	-- Dudukkan avatar dummy di Seat1
-	local chestPos = seatPos + Vector3.new(0, 1.4, -0.4)
+	local maxPenetrationNear = 0
 
 	for _, bType in ipairs(bodyTypes) do
-		local dummy = createR15Dummy("Dummy_" .. bType.name)
-		applyBodyScale(dummy, bType)
-		dummy:PivotTo(CFrame.new(seatPos + Vector3.new(0, 0.8, 0)) * CFrame.Angles(0, math.rad(180), 0))
-		dummy.Parent = workspace
+		local rig = createScaledR15Rig("Dummy_" .. bType.name, bType)
+		-- Seat1 menghadap -Z (default CFrame orientasi R15 adalah menghadap -Z)
+		rig:PivotTo(CFrame.new(seatPos.X, seatPos.Y + 1.6, seatPos.Z))
+		local hrp = rig:FindFirstChild("HumanoidRootPart") :: BasePart?
+		if hrp then
+			hrp.Anchored = true
+		end
+		rig.Parent = workspace
 
-		-- Buat HandController untuk dummy ini
-		local handCtrl = HandControllerModule.new(1, dummy)
+		-- Tunggu beberapa frame agar rig dan Animator terinisialisasi di Workspace
+		for _ = 1, 4 do
+			task.wait()
+		end
+
+		local upperTorso = rig:FindFirstChild("UpperTorso") :: BasePart?
+		local lowerTorso = rig:FindFirstChild("LowerTorso") :: BasePart?
+		local rUpper = rig:FindFirstChild("RightUpperArm") :: BasePart?
+		local rLower = rig:FindFirstChild("RightLowerArm") :: BasePart?
+		local rHand = rig:FindFirstChild("RightHand") :: BasePart?
+
+		local handCtrl = HandControllerModule.new(1, rig)
+		if handCtrl.rightIK then
+			handCtrl.rightIK.SmoothTime = 0
+		end
 
 		for _, tgt in ipairs(targets) do
+			local chestPos = if upperTorso then upperTorso.Position else (seatPos + Vector3.new(0, 1.6, 0))
 			local distFromChest = (tgt.pos - chestPos).Magnitude
 
-			-- Tangan kanan menjangkau target
-			handCtrl:ReachTo(tgt.pos, "R", 0.05, false)
+			handCtrl:ReachTo(tgt.pos, "R", 0.01, false)
 
-			-- Ambil posisi aktual tangan
-			local rHand = dummy:FindFirstChild("RightHand") :: BasePart?
-			local rLowerArm = dummy:FindFirstChild("RightLowerArm") :: BasePart?
+			-- Tunggu beberapa frame agar IKControl selesai dievaluasi oleh Animator/Stepped
+			for _ = 1, 8 do
+				task.wait()
+			end
 
-			-- Hitung posisi tangan
+			-- Baca posisi tangan SESUNGGUHNYA dari instance RightHand
 			local actualHandPos = if rHand then rHand.Position else chestPos
-			-- Selesaikan secara geometris jangkauan IK berdasarkan panjang lengan
-			local armLength = (1.2 + 1.2 + 0.6) * bType.height
-			local actualReachDist = math.min(distFromChest, armLength)
-			local dir = (tgt.pos - chestPos).Unit
-			local solvedHandPos = chestPos + dir * actualReachDist
-
-			local remainingDist = (tgt.pos - solvedHandPos).Magnitude
+			local deskYOffset = FeelConfig.HANDS.DESK_SURFACE_Y_OFFSET or 0.05
+			local targetFinalPos = Vector3.new(tgt.pos.X, tgt.pos.Y + deskYOffset, tgt.pos.Z)
+			local remainingDist = (targetFinalPos - actualHandPos).Magnitude
 			local reached = remainingDist <= 0.25
 
-			-- Hitung penetrasi meja: apakah tangan atau lengan berada di bawah permukaan meja?
-			local lowestY = math.min(solvedHandPos.Y, tgt.pos.Y)
-			local tablePenetration = math.max(0, (tableSurfaceY - lowestY))
-
-			-- Hitung tumpang tindih badan
-			local distToTorso = (solvedHandPos - chestPos).Magnitude
-			local bodyOverlap = distToTorso < (0.6 * bType.depth)
-
-			-- Evaluasi visual plausibility
-			local visualScore = 5
-			local visualReason = "Sudut sendi natural, siku bebas hambatan."
+			local tablePenetration = measureTablePenetration(tableTop, tableSurfaceY, rUpper, rLower, rHand)
+			local bodyOverlap = measureBodyOverlap(upperTorso, lowerTorso, rLower, rHand)
 
 			local isNearTarget = (tgt.name == "Rak Terdekat" or tgt.name == "Rak Terjauh" or tgt.name == "Ujung Dekat")
 			if isNearTarget then
@@ -274,20 +349,27 @@ function M3bSpikeTests.RunSpike(): {
 				if reached then
 					nearTargetSuccessCount += 1
 				end
+				if tablePenetration > maxPenetrationNear then
+					maxPenetrationNear = tablePenetration
+				end
 			end
 
-			if distFromChest <= 2.2 then
-				visualScore = 5
-				visualReason = "Sangat wajar, siku rileks dan menekuk alami."
-			elseif distFromChest <= armLength then
-				visualScore = 4
-				visualReason = "Wajar, lengan meregang rileks dalam jangkauan."
-			elseif distFromChest <= (armLength + FeelConfig.HANDS.MAX_TOSS_DISTANCE) then
+			local visualScore = 5
+			local visualReason = "Sendi natural, tangan mencapai target tanpa kliping berarti."
+			if not reached then
+				if remainingDist <= FeelConfig.HANDS.MAX_TOSS_DISTANCE then
+					visualScore = 3
+					visualReason = "Di luar panjang lengan R15 (~1.30 stud); memerlukan slide/toss kartu."
+				else
+					visualScore = 2
+					visualReason = "Jauh di seberang meja; wajib animasi lempar/slide kartu."
+				end
+			elseif tablePenetration > 0.20 or bodyOverlap then
 				visualScore = 3
-				visualReason = "Tangan menjangkau batas max; kartu memerlukan slide/toss."
-			else
-				visualScore = 2
-				visualReason = "Di luar radius jangkauan fisik dan toss."
+				visualReason = string.format("Tercapai, namun ada penetrasi meja %.2f stud / overlap torso.", tablePenetration)
+			elseif tablePenetration > 0.05 then
+				visualScore = 4
+				visualReason = string.format("Tercapai wajar, sentuhan permukaan meja %.2f stud.", tablePenetration)
 			end
 
 			local cell: SpikeCellResult = {
@@ -295,7 +377,11 @@ function M3bSpikeTests.RunSpike(): {
 				targetName = tgt.name,
 				targetPos = tgt.pos,
 				distanceFromChest = math.floor(distFromChest * 100) / 100,
-				handPos = solvedHandPos,
+				handPos = Vector3.new(
+					math.floor(actualHandPos.X * 100) / 100,
+					math.floor(actualHandPos.Y * 100) / 100,
+					math.floor(actualHandPos.Z * 100) / 100
+				),
 				remainingDistance = math.floor(remainingDist * 100) / 100,
 				reached = reached,
 				tablePenetration = math.floor(tablePenetration * 100) / 100,
@@ -307,58 +393,76 @@ function M3bSpikeTests.RunSpike(): {
 		end
 
 		handCtrl:Destroy()
-		dummy:Destroy()
+		rig:Destroy()
 	end
 
-	-- 2. Uji Sinkronisasi Dua Client
-	-- Client A dan Client B sama-sama menerima event `TilePlaced` untuk Kursi 1
-	-- Keduanya menjalankan HandController lokal independen dengan input target yang sama.
-	local dummyA = createR15Dummy("SyncDummyA")
-	local dummyB = createR15Dummy("SyncDummyB")
-	dummyA:PivotTo(CFrame.new(seatPos) * CFrame.Angles(0, math.rad(180), 0))
-	dummyB:PivotTo(CFrame.new(seatPos) * CFrame.Angles(0, math.rad(180), 0))
+	-- 2. Uji determinisme 2 instance lokal (catatan: sinkronisasi jaringan 2 pemain hanya valid di Local Server 2 Players)
+	local dummyA = createScaledR15Rig("SyncDummyA", { width = 1, depth = 1, height = 1 })
+	local dummyB = createScaledR15Rig("SyncDummyB", { width = 1, depth = 1, height = 1 })
+	dummyA:PivotTo(CFrame.new(seatPos.X, seatPos.Y + 1.6, seatPos.Z))
+	dummyB:PivotTo(CFrame.new(seatPos.X, seatPos.Y + 1.6, seatPos.Z))
+	local hrpA = dummyA:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local hrpB = dummyB:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if hrpA then hrpA.Anchored = true end
+	if hrpB then hrpB.Anchored = true end
 	dummyA.Parent = workspace
 	dummyB.Parent = workspace
 
+	for _ = 1, 4 do
+		task.wait()
+	end
+
 	local ctrlA = HandControllerModule.new(1, dummyA)
 	local ctrlB = HandControllerModule.new(1, dummyB)
+	if ctrlA.rightIK then ctrlA.rightIK.SmoothTime = 0 end
+	if ctrlB.rightIK then ctrlB.rightIK.SmoothTime = 0 end
 
 	local sampleTarget = targets[1].pos
-	ctrlA:ReachTo(sampleTarget, "R", 0.05, false)
-	ctrlB:ReachTo(sampleTarget, "R", 0.05, false)
+	ctrlA:ReachTo(sampleTarget, "R", 0.01, false)
+	ctrlB:ReachTo(sampleTarget, "R", 0.01, false)
+
+	for _ = 1, 8 do
+		task.wait()
+	end
 
 	local posA = ctrlA:GetHandPosition("R") or sampleTarget
 	local posB = ctrlB:GetHandPosition("R") or sampleTarget
-	local syncDelta = (posA - posB).Magnitude
-	local syncLatencyMs = 16.6 -- 1 frame pada 60 FPS (zero network transport overhead untuk animasi lokal terdorong event)
+	local syncDelta = math.floor((posA - posB).Magnitude * 1000) / 1000
+	local syncStatus = "TIDAK-BISA-DIJALANKAN (Uji jaringan 2 pemain membutuhkan Local Server 2 Players manual)"
 
 	ctrlA:Destroy()
 	ctrlB:Destroy()
 	dummyA:Destroy()
 	dummyB:Destroy()
 
-	-- 3. Evaluasi Gerbang Keputusan
-	-- Persentase jangkauan target dekat (rak + ujung dekat)
+	-- 3. Evaluasi Gerbang Keputusan Jujur
 	local nearSuccessRate = if nearTargetTotalCount > 0 then (nearTargetSuccessCount / nearTargetTotalCount) * 100 else 0
-	local gateResult = "TIDAK LAYAK"
-	if nearSuccessRate >= 90.0 then
-		gateResult = "LAYAK DENGAN SYARAT" -- Layak dengan syarat toss untuk titik jauh di luar reach radius
+	local gateResult = "TIDAK LAYAK (PADA MEJA SAAT INI)"
+	if nearSuccessRate >= 90.0 and maxPenetrationNear <= 0.20 then
+		gateResult = "LAYAK DENGAN SYARAT (TOSS UNTUK TITIK JAUH)"
+	elseif nearSuccessRate >= 75.0 then
+		gateResult = string.format(
+			"BELUM LAYAK PADA MEJA 5.6x5.6 (Jangkauan dekat %.1f%%, penetrasi meja maks %.2f stud akibat kursi 2.65 di dalam tepi meja 2.80)",
+			nearSuccessRate,
+			maxPenetrationNear
+		)
 	end
 
 	local summaryText = string.format(
-		"Hasil Spike: Jangkauan target dekat = %d/%d (%.1f%%). Penetrasi meja pose normal = 0.00 stud. Sinkron delta = %.2f stud (%d ms). Keputusan: %s.",
+		"Hasil Spike IK Nyata: Jangkauan target dekat = %d/%d (%.1f%%). Penetrasi meja maks = %.2f stud. Delta determinisme rig = %.3f stud. Sinkron 2 Pemain = %s. Keputusan: %s.",
 		nearTargetSuccessCount,
 		nearTargetTotalCount,
 		nearSuccessRate,
+		maxPenetrationNear,
 		syncDelta,
-		syncLatencyMs,
+		syncStatus,
 		gateResult
 	)
 
 	return {
 		matrix = matrixResults,
 		syncDelta = syncDelta,
-		syncLatencyMs = syncLatencyMs,
+		syncStatus = syncStatus,
 		gateResult = gateResult,
 		summaryText = summaryText,
 	}

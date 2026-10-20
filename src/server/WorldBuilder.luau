@@ -14,6 +14,9 @@
 ]=]
 
 local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local BoardLayout = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("BoardLayout"))
 
 local WorldBuilder = {}
 
@@ -90,7 +93,7 @@ function WorldBuilder.SetupLighting()
 	bloom.Parent = Lighting
 end
 
--- Helper pembuat Kursi Bakso Plastik Hijau (Iconic Indonesian Green Plastic Stool)
+-- Helper pembuat Kursi Bakso Plastik Hijau Anyaman Rattan Realistis (Iconic Indonesian Green Plastic Stool)
 local function createKursiBakso(
 	tableModel: Model,
 	seatIndex: number,
@@ -101,84 +104,206 @@ local function createKursiBakso(
 ): Seat
 	local targetFace = Vector3.new(centerPos.X, seatPos.Y, centerPos.Z)
 	local seatCF = CFrame.lookAt(seatPos, targetFace)
+	local legHeight = (seatPos.Y - 0.08) - floorY
+
+	-- Palet warna hijau plastik anyaman warung (Lion Star / Napolly Hijau)
+	local COLOR_MAIN = Color3.fromRGB(46, 148, 68)      -- Hijau plastik utama
+	local COLOR_TOP_WOVEN = Color3.fromRGB(58, 168, 80) -- Hijau anyaman atas (aksen cerah)
+	local COLOR_DARK = Color3.fromRGB(30, 105, 46)       -- Aksen celah & foot pads
+	local COLOR_RIM = Color3.fromRGB(38, 128, 56)        -- Lis & profil penguat
+
+	-- 1. DUDUKAN UTAMA (Seat instance untuk gameplay & prompt)
 	local seatPart = Instance.new("Seat")
 	seatPart.Name = "Seat" .. seatIndex
-	seatPart.Material = Enum.Material.SmoothPlastic
-	seatPart.Color = Color3.fromRGB(24, 118, 52) -- Hijau khas kursi plastik hajatan / bakso
-	seatPart.Size = Vector3.new(1.4, 0.22, 1.4)
+	seatPart.Material = Enum.Material.Plastic
+	seatPart.Color = COLOR_MAIN
+	seatPart.Size = Vector3.new(1.30, 0.16, 1.30)
 	seatPart.CFrame = seatCF
 	seatPart.Anchored = true
 	seatPart.CanCollide = true
 	seatPart.CastShadow = true
+	seatPart.Disabled = true -- Cegah karakter tersedot otomatis saat jalan menyenggol kursi; duduk hanya via [E] prompt
 	seatPart.SetAttribute(seatPart, "SeatIndex", seatIndex)
 	seatPart.SetAttribute(seatPart, "TableId", tableId)
 
-	-- 1. Lubang pegangan tengah kursi bakso (grip hole accent)
+	-- 2. PANEL DUDUKAN ATAS BERMOTIF ANYAMAN RATTAN
 	createPart({
-		Name = "GripHole",
-		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(15, 75, 33), -- Aksen cekungan lubang tengah
-		Size = Vector3.new(0.42, 0.24, 0.16),
-		CFrame = seatCF * CFrame.new(0, 0.01, 0),
+		Name = "SeatTopWoven",
+		Material = Enum.Material.Fabric, -- Serat mikro menyerupai anyaman rattan plastik
+		Color = COLOR_TOP_WOVEN,
+		Size = Vector3.new(1.10, 0.03, 1.10),
+		CFrame = seatCF * CFrame.new(0, 0.095, 0),
 		CanCollide = false,
 		Parent = tableModel,
 	})
 
-	-- 2. Bibir cetakan bawah dudukan kursi (molded rim)
-	createPart({
-		Name = "SeatRim",
-		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(20, 105, 46),
-		Size = Vector3.new(1.46, 0.08, 1.46),
-		CFrame = seatCF * CFrame.new(0, -0.12, 0),
-		CanCollide = false,
-		Parent = tableModel,
-	})
-
-	-- 3. 4 Kaki plastik miring sedikit melebar ke bawah (tapered legs)
-	local legHeight = (seatPos.Y - 0.11) - floorY
-	local legOffsets = {
-		Vector3.new(-0.52, 0, -0.52),
-		Vector3.new(0.52, 0, -0.52),
-		Vector3.new(-0.52, 0, 0.52),
-		Vector3.new(0.52, 0, 0.52),
+	-- Lis bingkai pelindung di sekeliling anyaman atas
+	local rimThickness = 0.10
+	local rimHeight = 0.04
+	local rimLength = 1.28
+	local rimOffset = 0.58
+	local rimConfigs = {
+		{ name = "RimFront", size = Vector3.new(rimLength, rimHeight, rimThickness), offset = Vector3.new(0, 0.09, -rimOffset) },
+		{ name = "RimBack",  size = Vector3.new(rimLength, rimHeight, rimThickness), offset = Vector3.new(0, 0.09, rimOffset) },
+		{ name = "RimLeft",  size = Vector3.new(rimThickness, rimHeight, rimLength - 2 * rimThickness), offset = Vector3.new(-rimOffset, 0.09, 0) },
+		{ name = "RimRight", size = Vector3.new(rimThickness, rimHeight, rimLength - 2 * rimThickness), offset = Vector3.new(rimOffset, 0.09, 0) },
 	}
-
-	for legIdx, offset in ipairs(legOffsets) do
-		local legWorldCF = seatCF * CFrame.new(offset.X, -legHeight / 2, offset.Z)
+	for _, r in ipairs(rimConfigs) do
 		createPart({
-			Name = "PlasticLeg" .. legIdx,
+			Name = r.name,
 			Material = Enum.Material.SmoothPlastic,
-			Color = Color3.fromRGB(22, 110, 48),
-			Size = Vector3.new(0.18, legHeight, 0.18),
-			CFrame = legWorldCF,
-			CanCollide = true,
-			Parent = tableModel,
-		})
-	end
-
-	-- 4. Ring penahan kaki plastik di bagian bawah (footrest bracing loop)
-	local ringY = floorY + legHeight * 0.35
-	local ringRelY = ringY - seatPos.Y
-	local braceSides = {
-		{ size = Vector3.new(1.10, 0.07, 0.07), offset = Vector3.new(0, ringRelY, -0.52) },
-		{ size = Vector3.new(1.10, 0.07, 0.07), offset = Vector3.new(0, ringRelY, 0.52) },
-		{ size = Vector3.new(0.07, 0.07, 1.10), offset = Vector3.new(-0.52, ringRelY, 0) },
-		{ size = Vector3.new(0.07, 0.07, 1.10), offset = Vector3.new(0.52, ringRelY, 0) },
-	}
-	for bIdx, bCfg in ipairs(braceSides) do
-		createPart({
-			Name = "BraceSide" .. bIdx,
-			Material = Enum.Material.SmoothPlastic,
-			Color = Color3.fromRGB(20, 100, 44),
-			Size = bCfg.size,
-			CFrame = seatCF * CFrame.new(bCfg.offset),
+			Color = COLOR_RIM,
+			Size = r.size,
+			CFrame = seatCF * CFrame.new(r.offset),
 			CanCollide = false,
 			Parent = tableModel,
 		})
 	end
 
-	-- 5. Attachment Anchor POV First-Person & Gameplay
+	-- 3. BIBIR CETAKAN BAWAH DUDUKAN (Seat Skirt / Bevel)
+	createPart({
+		Name = "SeatSkirt",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_RIM,
+		Size = Vector3.new(1.36, 0.10, 1.36),
+		CFrame = seatCF * CFrame.new(0, -0.10, 0),
+		CanCollide = false,
+		Parent = tableModel,
+	})
+
+	-- 4. APRON / DINDING LENGKUNG DI ATAS LUBANG KAKI (4 Sisi)
+	local apronWidth = 0.86
+	local apronHeight = 0.22
+	local apronThick = 0.08
+	local apronY = -0.22
+	local apronDist = 0.52
+	local apronConfigs = {
+		{ name = "ApronFront", size = Vector3.new(apronWidth, apronHeight, apronThick), offset = Vector3.new(0, apronY, -apronDist) },
+		{ name = "ApronBack",  size = Vector3.new(apronWidth, apronHeight, apronThick), offset = Vector3.new(0, apronY, apronDist) },
+		{ name = "ApronLeft",  size = Vector3.new(apronThick, apronHeight, apronWidth), offset = Vector3.new(-apronDist, apronY, 0) },
+		{ name = "ApronRight", size = Vector3.new(apronThick, apronHeight, apronWidth), offset = Vector3.new(apronDist, apronY, 0) },
+	}
+	for _, a in ipairs(apronConfigs) do
+		createPart({
+			Name = a.name,
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLOR_MAIN,
+			Size = a.size,
+			CFrame = seatCF * CFrame.new(a.offset),
+			CanCollide = false,
+			Parent = tableModel,
+		})
+	end
+
+	-- 5. 4 KAKI PLASTIK MIRING MELEBAR KE BAWAH (TAPERED L-PROFILE LEGS)
+	local topRadius = 0.50
+	local botRadius = 0.65
+	local corners = {
+		{ name = "LegFL", signX = -1, signZ = -1 },
+		{ name = "LegFR", signX =  1, signZ = -1 },
+		{ name = "LegBL", signX = -1, signZ =  1 },
+		{ name = "LegBR", signX =  1, signZ =  1 },
+	}
+
+	for _, c in ipairs(corners) do
+		local topPos = (seatCF * CFrame.new(c.signX * topRadius, -0.14, c.signZ * topRadius)).Position
+		local botPos = (seatCF * CFrame.new(c.signX * botRadius, -legHeight, c.signZ * botRadius)).Position
+		local legMid = (topPos + botPos) / 2
+		local legDir = (botPos - topPos)
+		local legLen = legDir.Magnitude
+		local legAngleCF = CFrame.lookAt(legMid, botPos) * CFrame.Angles(math.rad(90), 0, 0)
+
+		-- Tiang Kaki Utama
+		createPart({
+			Name = c.name,
+			Material = Enum.Material.Plastic,
+			Color = COLOR_MAIN,
+			Size = Vector3.new(0.18, legLen, 0.18),
+			CFrame = legAngleCF,
+			CanCollide = true,
+			Parent = tableModel,
+		})
+
+		-- Bilah Siku Penguat Luar Kaki (L-Profile Flange khas kursi cetakan)
+		createPart({
+			Name = c.name .. "_FlangeX",
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLOR_RIM,
+			Size = Vector3.new(0.06, legLen * 0.95, 0.22),
+			CFrame = legAngleCF * CFrame.new(c.signX * 0.06, 0, 0),
+			CanCollide = false,
+			Parent = tableModel,
+		})
+		createPart({
+			Name = c.name .. "_FlangeZ",
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLOR_RIM,
+			Size = Vector3.new(0.22, legLen * 0.95, 0.06),
+			CFrame = legAngleCF * CFrame.new(0, 0, c.signZ * 0.06),
+			CanCollide = false,
+			Parent = tableModel,
+		})
+
+		-- Karet / Bantalan Kaki di Lantai (Foot Pad)
+		createPart({
+			Name = c.name .. "_Pad",
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLOR_DARK,
+			Size = Vector3.new(0.22, 0.07, 0.22),
+			CFrame = CFrame.new(botPos.X, floorY + 0.035, botPos.Z),
+			CanCollide = true,
+			Parent = tableModel,
+		})
+	end
+
+	-- 6. PENYANGGA KAKI HORIZONTAL BERTINGKAT (FOOTREST STRETCHER BARS)
+	-- Sisi Depan & Belakang posisinya sedikit lebih rendah
+	local barLowY = floorY + legHeight * 0.28
+	local barLowRelY = barLowY - seatPos.Y
+	local barLowSpread = topRadius + (botRadius - topRadius) * 0.72
+	createPart({
+		Name = "FootrestFront",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_DARK,
+		Size = Vector3.new(barLowSpread * 1.85, 0.12, 0.08),
+		CFrame = seatCF * CFrame.new(0, barLowRelY, -barLowSpread),
+		CanCollide = true,
+		Parent = tableModel,
+	})
+	createPart({
+		Name = "FootrestBack",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_DARK,
+		Size = Vector3.new(barLowSpread * 1.85, 0.12, 0.08),
+		CFrame = seatCF * CFrame.new(0, barLowRelY, barLowSpread),
+		CanCollide = true,
+		Parent = tableModel,
+	})
+
+	-- Sisi Kiri & Kanan posisinya sedikit lebih tinggi (khas kursi plastik tumpuk)
+	local barHighY = floorY + legHeight * 0.40
+	local barHighRelY = barHighY - seatPos.Y
+	local barHighSpread = topRadius + (botRadius - topRadius) * 0.60
+	createPart({
+		Name = "FootrestLeft",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_DARK,
+		Size = Vector3.new(0.08, 0.12, barHighSpread * 1.85),
+		CFrame = seatCF * CFrame.new(-barHighSpread, barHighRelY, 0),
+		CanCollide = true,
+		Parent = tableModel,
+	})
+	createPart({
+		Name = "FootrestRight",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_DARK,
+		Size = Vector3.new(0.08, 0.12, barHighSpread * 1.85),
+		CFrame = seatCF * CFrame.new(barHighSpread, barHighRelY, 0),
+		CanCollide = true,
+		Parent = tableModel,
+	})
+
+	-- 7. ATTACHMENT ANCHOR POV FIRST-PERSON & GAMEPLAY
 	local camAnchor = Instance.new("Attachment")
 	camAnchor.Name = "CameraAnchor"
 	camAnchor.CFrame = CFrame.new(0, 1.85, 0)
@@ -186,19 +311,19 @@ local function createKursiBakso(
 
 	local rackAnchor = Instance.new("Attachment")
 	rackAnchor.Name = "RackAnchor"
-	rackAnchor.CFrame = CFrame.new(0, 1.15, -0.75)
+	rackAnchor.CFrame = CFrame.new(0, 1.45, -0.60)
 	rackAnchor.Parent = seatPart
 
 	local handRestAnchor = Instance.new("Attachment")
 	handRestAnchor.Name = "HandRestAnchor"
-	handRestAnchor.CFrame = CFrame.new(0, 0.85, -0.45)
+	handRestAnchor.CFrame = CFrame.new(0, 1.35, -0.35)
 	handRestAnchor.Parent = seatPart
 
 	seatPart.Parent = tableModel
 	return seatPart
 end
 
--- Helper pembuat Meja Kotak Kayu Gaplek Proporsional (5.6 x 5.6 stud) & 4 Kursi Bakso
+-- Helper pembuat Meja Kotak Kayu Gaplek Proporsional (6.6 x 6.6 stud) & 4 Kursi Bakso
 local function createGaplekTable(
 	parent: Instance,
 	tableId: number,
@@ -214,32 +339,36 @@ local function createGaplekTable(
 	tableModel.SetAttribute(tableModel, "Mode", "2v2")
 	tableModel.Parent = parent
 
-	-- Ketinggian proporsional meja kotak gaplek
+	-- Ketinggian proporsional meja kotak gaplek & dimensi dari BoardLayout
+	local tableSize = BoardLayout.GetTableSize()
+	local tableSpan = tableSize.X
+	local tableHalf = tableSpan / 2
 	local seatHeight = floorY + 1.25
 	local tableSurfaceY = floorY + 2.70
-	local tableThickness = 0.28
+	local tableThickness = tableSize.Y
 	local tableTopCenterY = tableSurfaceY - tableThickness / 2
 
-	-- 1. Daun meja kotak kayu (5.6 x 5.6 stud)
+	-- 1. Daun meja kotak kayu (6.6 x 6.6 stud)
 	local tableTop = createPart({
 		Name = "TableTop",
 		Material = Enum.Material.WoodPlanks,
 		Color = Color3.fromRGB(130, 92, 58),
-		Size = Vector3.new(5.6, tableThickness, 5.6),
+		Size = Vector3.new(tableSpan, tableThickness, tableSpan),
 		CFrame = CFrame.new(centerPos.X, tableTopCenterY, centerPos.Z),
 		Parent = tableModel,
 	})
 	tableModel.PrimaryPart = tableTop
 
 	-- Lis pinggiran meja kayu
-	local trimSizeX = Vector3.new(5.7, 0.32, 0.10)
-	local trimSizeZ = Vector3.new(0.10, 0.32, 5.7)
+	local trimOffset = tableHalf + 0.02
+	local trimSizeX = Vector3.new(tableSpan + 0.10, 0.32, 0.10)
+	local trimSizeZ = Vector3.new(0.10, 0.32, tableSpan + 0.10)
 	createPart({
 		Name = "TableTrimF",
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(95, 65, 40),
 		Size = trimSizeX,
-		CFrame = CFrame.new(centerPos.X, tableTopCenterY, centerPos.Z + 2.82),
+		CFrame = CFrame.new(centerPos.X, tableTopCenterY, centerPos.Z + trimOffset),
 		Parent = tableModel,
 	})
 	createPart({
@@ -247,7 +376,7 @@ local function createGaplekTable(
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(95, 65, 40),
 		Size = trimSizeX,
-		CFrame = CFrame.new(centerPos.X, tableTopCenterY, centerPos.Z - 2.82),
+		CFrame = CFrame.new(centerPos.X, tableTopCenterY, centerPos.Z - trimOffset),
 		Parent = tableModel,
 	})
 	createPart({
@@ -255,7 +384,7 @@ local function createGaplekTable(
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(95, 65, 40),
 		Size = trimSizeZ,
-		CFrame = CFrame.new(centerPos.X - 2.82, tableTopCenterY, centerPos.Z),
+		CFrame = CFrame.new(centerPos.X - trimOffset, tableTopCenterY, centerPos.Z),
 		Parent = tableModel,
 	})
 	createPart({
@@ -263,18 +392,19 @@ local function createGaplekTable(
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(95, 65, 40),
 		Size = trimSizeZ,
-		CFrame = CFrame.new(centerPos.X + 2.82, tableTopCenterY, centerPos.Z),
+		CFrame = CFrame.new(centerPos.X + trimOffset, tableTopCenterY, centerPos.Z),
 		Parent = tableModel,
 	})
 
 	-- 2. 4 Kaki meja kayu kokoh
 	local legHeight = tableTopCenterY - floorY
 	local legCenterY = floorY + legHeight / 2
+	local legPosOffset = tableHalf - 0.45
 	local legOffsets = {
-		Vector3.new(-2.35, legCenterY, -2.35),
-		Vector3.new(2.35, legCenterY, -2.35),
-		Vector3.new(-2.35, legCenterY, 2.35),
-		Vector3.new(2.35, legCenterY, 2.35),
+		Vector3.new(-legPosOffset, legCenterY, -legPosOffset),
+		Vector3.new(legPosOffset, legCenterY, -legPosOffset),
+		Vector3.new(-legPosOffset, legCenterY, legPosOffset),
+		Vector3.new(legPosOffset, legCenterY, legPosOffset),
 	}
 	for i, lOffset in ipairs(legOffsets) do
 		createPart({
@@ -288,11 +418,12 @@ local function createGaplekTable(
 	end
 
 	-- Palang penyangga bawah meja
+	local braceSpan = tableSpan - 0.80
 	createPart({
 		Name = "TableBraceX",
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(85, 58, 36),
-		Size = Vector3.new(4.8, 0.35, 0.35),
+		Size = Vector3.new(braceSpan, 0.35, 0.35),
 		CFrame = CFrame.new(centerPos.X, floorY + 0.6, centerPos.Z),
 		Parent = tableModel,
 	})
@@ -300,7 +431,7 @@ local function createGaplekTable(
 		Name = "TableBraceZ",
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(85, 58, 36),
-		Size = Vector3.new(0.35, 0.35, 4.8),
+		Size = Vector3.new(0.35, 0.35, braceSpan),
 		CFrame = CFrame.new(centerPos.X, floorY + 0.6, centerPos.Z),
 		Parent = tableModel,
 	})
@@ -324,8 +455,8 @@ local function createGaplekTable(
 	shuffleZoneAtt.Position = Vector3.new(0, 0.05, 0)
 	shuffleZoneAtt.Parent = boardCenter
 
-	-- 4. 4 Kursi Bakso Plastik Hijau (Jarak 2.65 stud dari pusat meja menghadap ke tengah)
-	local seatDist = 2.65
+	-- 4. 4 Kursi Bakso Plastik Hijau (Jarak SEAT_DISTANCE = 3.55 stud dari pusat meja menghadap ke tengah)
+	local seatDist = BoardLayout.GetSeatDistance()
 	local seatConfigs = {
 		{ id = 1, pos = centerPos + Vector3.new(0, seatHeight, seatDist) },
 		{ id = 2, pos = centerPos + Vector3.new(seatDist, seatHeight, 0) },
@@ -1117,6 +1248,14 @@ function WorldBuilder.Build(): Model
 			CFrame = CFrame.new(bananaBase.X, 7.2, bananaBase.Z) * CFrame.Angles(math.rad(-25), math.rad(angleDeg), 0),
 			Parent = envFolder,
 		})
+	end
+
+	-- Konfigurasi SpawnLocation agar pemain muncul di pelataran depan Pos Ronda (menghadap pintu masuk)
+	local defaultSpawn = workspace:FindFirstChildOfClass("SpawnLocation")
+	if defaultSpawn then
+		defaultSpawn.CFrame = CFrame.new(0, 1.25, 14) * CFrame.Angles(0, math.rad(180), 0)
+		defaultSpawn.Size = Vector3.new(8, 0.5, 8)
+		defaultSpawn.Enabled = true
 	end
 
 	root.Parent = workspace

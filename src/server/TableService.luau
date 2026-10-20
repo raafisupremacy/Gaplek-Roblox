@@ -65,6 +65,24 @@ local BOT_NAMES = {
 	[4] = "Bot Bang Udin",
 }
 
+-- Palet pakaian warga pos ronda untuk rig R15 bot
+local BOT_SHIRT_COLORS = {
+	[1] = Color3.fromRGB(95, 55, 38),  -- Pak RT: Batik coklat tua
+	[2] = Color3.fromRGB(45, 85, 115), -- Mas Joko: Kemeja biru malam
+	[3] = Color3.fromRGB(55, 95, 60),  -- Kang Asep: Kaos hijau lumut
+	[4] = Color3.fromRGB(115, 48, 45), -- Bang Udin: Jaket merah marun
+}
+local BOT_PANTS_COLOR = Color3.fromRGB(35, 38, 45) -- Sarung / celana gelap
+local BOT_SKIN_COLOR = Color3.fromRGB(215, 175, 140) -- Kulit sawo matang terang
+
+-- Penyimpanan model rig R15 bot aktif: [tableId][seatIndex] = Model
+local botRigs: { [number]: { [number]: Model? } } = {
+	[1] = {},
+	[2] = {},
+	[3] = {},
+	[4] = {},
+}
+
 -- Inisialisasi struktur state per meja
 local function initTableState(id: number): TableState
 	return {
@@ -211,6 +229,78 @@ function TableService.GetBotProfile(seatIndex: number, tableId: number?): BotPro
 	return if tbl then tbl.botProfiles[seatIndex] else nil
 end
 
+-- Helper membuat atau menghapus karakter rig R15 untuk kursi Bot (BOT_SPEC.md §3)
+local function destroyBotRig(tid: number, seatIndex: number)
+	if botRigs[tid] and botRigs[tid][seatIndex] then
+		local oldRig = botRigs[tid][seatIndex]
+		botRigs[tid][seatIndex] = nil
+		if oldRig and oldRig.Parent then
+			oldRig:Destroy()
+		end
+	end
+end
+
+local function spawnBotRigAtSeat(tid: number, seatIndex: number, seatPart: Seat)
+	destroyBotRig(tid, seatIndex)
+
+	local ok, rig = pcall(function()
+		local desc = Instance.new("HumanoidDescription")
+		local skin = BOT_SKIN_COLOR
+		local shirt = BOT_SHIRT_COLORS[seatIndex] or BOT_SHIRT_COLORS[1]
+		desc.HeadColor = skin
+		desc.LeftArmColor = skin
+		desc.RightArmColor = skin
+		desc.TorsoColor = shirt
+		desc.LeftLegColor = BOT_PANTS_COLOR
+		desc.RightLegColor = BOT_PANTS_COLOR
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+
+	if not ok or not rig then
+		return
+	end
+
+	rig.Name = string.format("BotRig_T%d_S%d", tid, seatIndex)
+	rig:SetAttribute("IsBotRig", true)
+	rig:SetAttribute("TableId", tid)
+	rig:SetAttribute("SeatIndex", seatIndex)
+
+	local hum = rig:FindFirstChildOfClass("Humanoid")
+	if hum then
+		hum.DisplayName = BOT_NAMES[seatIndex] or ("Bot " .. seatIndex)
+		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+		hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	end
+
+	-- Matikan CanCollide pada part tubuh bot agar tidak mengganggu fisika pemain
+	for _, descPart in ipairs(rig:GetDescendants()) do
+		if descPart:IsA("BasePart") then
+			descPart.CanCollide = false
+		end
+	end
+
+	local tblModel = getTableModel(tid)
+	rig.Parent = tblModel or workspace
+	local hrp = rig:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if hrp then
+		hrp.Anchored = true
+		rig:PivotTo(seatPart.CFrame * CFrame.new(0, 1.5, 0))
+	end
+	if hum then
+		hum.Sit = true
+	end
+
+	if not botRigs[tid] then
+		botRigs[tid] = {}
+	end
+	botRigs[tid][seatIndex] = rig
+end
+
+function TableService.GetBotRig(seatIndex: number, tableId: number?): Model?
+	local tid = tableId or 1
+	return if botRigs[tid] then botRigs[tid][seatIndex] else nil
+end
+
 function TableService.SetSeatBot(seatIndex: number, isBot: boolean, profile: BotProfile?, tableId: number?)
 	local tid = tableId or 1
 	local tbl = tables[tid]
@@ -224,6 +314,15 @@ function TableService.SetSeatBot(seatIndex: number, isBot: boolean, profile: Bot
 		local prompt = seatPart:FindFirstChildOfClass("ProximityPrompt")
 		if prompt then
 			prompt.Enabled = not isBot
+		end
+		if isBot then
+			spawnBotRigAtSeat(tid, seatIndex, seatPart)
+		else
+			destroyBotRig(tid, seatIndex)
+		end
+	else
+		if not isBot then
+			destroyBotRig(tid, seatIndex)
 		end
 	end
 
@@ -330,7 +429,12 @@ function TableService.SitPlayer(player: Player, seatIndex: number, tableId: numb
 		prompt.Enabled = false
 	end
 
-	seatPart:Sit(humanoid)
+	local isRealPlayer = (typeof(player) == "Instance" and player:IsA("Player"))
+	if isRealPlayer then
+		seatPart:Sit(humanoid)
+	else
+		humanoid.Sit = true
+	end
 
 	Logger.info("TableService", string.format("Pemain %s (%d) duduk di [%s] Kursi %d.", player.Name, player.UserId, tbl.name, seatIndex))
 
@@ -338,10 +442,8 @@ function TableService.SitPlayer(player: Player, seatIndex: number, tableId: numb
 	Remotes.getEvent("SeatChanged"):FireAllClients(seatIndex, player.UserId, player.Name, false, "sit", tid)
 
 	-- Kirim StateSync ke pemain yang baru duduk
-	if typeof(player) == "Instance" and player:IsA("Player") then
-		local GameService = getGameService()
-		GameService.SendStateSync(player, tid)
-	end
+	local GameService = getGameService()
+	GameService.SendStateSync(player, tid)
 
 	TableService.BroadcastRoomsUpdated()
 	return true, nil
@@ -361,9 +463,14 @@ function TableService.StandPlayer(player: Player): (boolean, string?)
 	local GameService = getGameService()
 	local state = GameService.GetState(tid)
 
+	-- Bersihkan state client pemain yang berdiri agar tidak menyisakan state meja lama
+	Remotes.getEvent("SeatChanged"):FireAllClients(seatIndex, player.UserId, player.Name, false, "stand", tid)
+	GameService.SendClearStateSync(player)
+
 	-- Jika match sedang berlangsung, ganti dengan bot agar permainan tidak macet
 	if state.isMatchRunning then
 		TableService.ReplacePlayerWithBot(seatIndex, "normal", tid)
+		GameService.OnSeatReplacedByBot(tid, seatIndex)
 	else
 		if tbl then
 			tbl.occupants[seatIndex] = nil
@@ -379,7 +486,6 @@ function TableService.StandPlayer(player: Player): (boolean, string?)
 				prompt.Enabled = true
 			end
 		end
-		Remotes.getEvent("SeatChanged"):FireAllClients(seatIndex, 0, "", false, "stand", tid)
 	end
 
 	local character = player.Character
@@ -387,6 +493,12 @@ function TableService.StandPlayer(player: Player): (boolean, string?)
 		local humanoid = character:FindFirstChildOfClass("Humanoid")
 		if humanoid then
 			humanoid.Sit = false
+		end
+		local hrp = character:FindFirstChild("HumanoidRootPart")
+		local seatPart = getSeatPart(seatIndex, tid)
+		if hrp and seatPart then
+			-- Pindahkan karakter sedikit ke belakang kursi agar berdiri bebas
+			hrp.CFrame = seatPart.CFrame * CFrame.new(0, 0.5, 2.5)
 		end
 	end
 
@@ -549,6 +661,7 @@ function TableService.Reset()
 		local tbl = tables[t]
 		if tbl then
 			for s = 1, GameConfig.TOTAL_SEATS do
+				destroyBotRig(t, s)
 				tbl.occupants[s] = nil
 				tbl.isBotSeat[s] = false
 				tbl.botProfiles[s] = nil
@@ -602,7 +715,8 @@ function TableService.Init()
 					local occupantConn = seatPart:GetPropertyChangedSignal("Occupant"):Connect(function()
 						if seatPart.Occupant == nil then
 							local currentOccupant = tblState.occupants[seatIndex]
-							if currentOccupant then
+							-- Hanya picu StandPlayer untuk Player Roblox nyata yang melompat dari kursi физических
+							if currentOccupant and typeof(currentOccupant) == "Instance" and currentOccupant:IsA("Player") then
 								TableService.StandPlayer(currentOccupant)
 							end
 						end
@@ -714,6 +828,7 @@ function TableService.ResetForTesting()
 		local tbl = tables[tid]
 		if tbl then
 			for s = 1, GameConfig.TOTAL_SEATS do
+				destroyBotRig(tid, s)
 				local occ = tbl.occupants[s]
 				if occ and typeof(occ) == "table" and (occ :: any).Character then
 					local hum = (occ :: any).Character:FindFirstChildOfClass("Humanoid")

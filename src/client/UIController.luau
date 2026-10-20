@@ -32,6 +32,9 @@ local GameEvents = require(script.Parent:WaitForChild("GameEvents"))
 local UITheme = require(script.Parent:WaitForChild("UITheme"))
 local UIAnimator = require(script.Parent:WaitForChild("UIAnimator"))
 local SettingsController = require(script.Parent:WaitForChild("SettingsController"))
+local SoundManager = require(script.Parent:WaitForChild("SoundManager"))
+local TileAnimator = require(script.Parent:WaitForChild("TileAnimator"))
+local CameraController = require(script.Parent:WaitForChild("CameraController"))
 
 type Mode = Types.Mode
 type Tile = Types.Tile
@@ -128,6 +131,29 @@ local connections: { RBXScriptConnection } = {}
 local timerConnection: RBXScriptConnection? = nil
 local isPassPulsing = false
 
+-- State Grup B: Indikator Giliran 3D (BillboardGui + Marker Meja) & Peringatan Waktu 10s
+local turnBillboardPart: BasePart? = nil
+local turnBillboardGui: BillboardGui? = nil
+local turnRingFrame: Frame? = nil
+local turnRingStroke: UIStroke? = nil
+local turnNameLabel: TextLabel? = nil
+local turnCountdownLabel: TextLabel? = nil
+local turnTableMarker: BasePart? = nil
+local lastWarningSec: number = -1
+local hasFlickeredThisTurn = false
+local activeScoreConn: RBXScriptConnection? = nil
+
+-- Helper mencari Model Meja aktif
+local function getActiveTableModel(): Model?
+	local char = localPlayer and localPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum and hum.SeatPart and hum.SeatPart.Parent and hum.SeatPart.Parent:IsA("Model") then
+		return hum.SeatPart.Parent :: Model
+	end
+	local posRonda = workspace:FindFirstChild("PosRonda")
+	return posRonda and posRonda:FindFirstChild("Table") :: Model?
+end
+
 -- ====================================================================
 -- FORMATTER PENJELASAN POIN (SESUAI GAME_RULES.md §6 & FIXTURE R1–R10)
 -- ====================================================================
@@ -190,8 +216,80 @@ function UIController.FormatScoreExplanation(
 end
 
 -- ====================================================================
--- PEMBARUAN TAMPILAN HUD SKOR
+-- PEMBARUAN TAMPILAN HUD SKOR (DENGAN 4 LAPISAN SKOR MENGHITUNG NAIK)
 -- ====================================================================
+
+--[=[
+	Memicu animasi 4 lapisan saat skor bertambah (Grup B):
+	1. Gerakan: Angka bergulir naik non-linear + label skor berdenyut (UIAnimator.Pulse).
+	2. Suara: Bunyi "score_tick" bertempo seiring angka bertambah.
+	3. Visual: Highlight kilau warna emas/kuning bohlam pada teks skor.
+	4. Lingkungan: Bohlam meja berayun tipis merespons penambahan poin.
+]=]
+function UIController.TriggerScoreCountUp(
+	startScores: { [number]: number },
+	targetScores: { [number]: number },
+	mode: Mode?
+)
+	if not scoreLabel then return end
+	local activeMode: Mode = mode or ClientState.mode
+	local uiFeel = FeelConfig.UI_FEEL
+	local dur = uiFeel.SCORE_COUNT_DURATION
+
+	if activeScoreConn then
+		activeScoreConn:Disconnect()
+		activeScoreConn = nil
+	end
+
+	-- Lapisan 1 & 3: Denyut label + warna emas menyala
+	UIAnimator.Pulse(scoreLabel, uiFeel.SCORE_PULSE_SCALE, uiFeel.SCORE_PULSE_DURATION)
+	scoreLabel.TextColor3 = UITheme.COLORS.BULB_YELLOW
+
+	-- Lapisan 4: Reaksi lingkungan halus pada lampu pos ronda
+	TileAnimator.SwayLamp(1.0)
+
+	local startTime = os.clock()
+	local lastTickTime = 0.0
+
+	activeScoreConn = RunService.RenderStepped:Connect(function()
+		local elapsed = os.clock() - startTime
+		local alpha = math.clamp(elapsed / math.max(0.05, dur), 0, 1)
+		local eased = 1 - (1 - alpha) * (1 - alpha) -- Quad Out
+
+		-- Lapisan 2: Bunyi score_tick bertempo
+		if (elapsed - lastTickTime) >= uiFeel.SCORE_TICK_INTERVAL and alpha < 1 then
+			lastTickTime = elapsed
+			SoundManager.PlayScoreTick(alpha)
+		end
+
+		if activeMode == "2v2" then
+			local cur1 = math.floor((startScores[1] or 0) + ((targetScores[1] or 0) - (startScores[1] or 0)) * eased)
+			local cur2 = math.floor((startScores[2] or 0) + ((targetScores[2] or 0) - (startScores[2] or 0)) * eased)
+			if scoreLabel then
+				scoreLabel.Text = string.format("▲ TIM 1: %d  |  ● TIM 2: %d  (Target 100)", cur1, cur2)
+			end
+		else
+			local c1 = math.floor((startScores[1] or 0) + ((targetScores[1] or 0) - (startScores[1] or 0)) * eased)
+			local c2 = math.floor((startScores[2] or 0) + ((targetScores[2] or 0) - (startScores[2] or 0)) * eased)
+			local c3 = math.floor((startScores[3] or 0) + ((targetScores[3] or 0) - (startScores[3] or 0)) * eased)
+			local c4 = math.floor((startScores[4] or 0) + ((targetScores[4] or 0) - (startScores[4] or 0)) * eased)
+			if scoreLabel then
+				scoreLabel.Text = string.format("K1: %d | K2: %d | K3: %d | K4: %d", c1, c2, c3, c4)
+			end
+		end
+
+		if alpha >= 1 then
+			if activeScoreConn then
+				activeScoreConn:Disconnect()
+				activeScoreConn = nil
+			end
+			SoundManager.PlayScoreTick(1.0)
+			if scoreLabel then
+				scoreLabel.TextColor3 = UITheme.COLORS.CREAM_TEXT
+			end
+		end
+	end)
+end
 
 local function updateScores()
 	if not scoreLabel then return end
@@ -202,43 +300,208 @@ local function updateScores()
 	if mode == "2v2" then
 		local s1 = scores[1] or 0
 		local s2 = scores[2] or 0
-		scoreLabel.Text = string.format("▲ TIM 1: %d  |  ● TIM 2: %d  (Target 100)", s1, s2)
 
-		-- Counting animation jika skor bertambah
-		if prevScores[1] ~= s1 or prevScores[2] ~= s2 then
-			UIAnimator.Pulse(scoreLabel, 1.05, 0.3)
+		if (prevScores[1] or 0) ~= s1 or (prevScores[2] or 0) ~= s2 then
+			local oldCopy = { [1] = prevScores[1] or 0, [2] = prevScores[2] or 0 }
 			prevScores[1] = s1
 			prevScores[2] = s2
+			UIController.TriggerScoreCountUp(oldCopy, { [1] = s1, [2] = s2 }, "2v2")
+		else
+			scoreLabel.Text = string.format("▲ TIM 1: %d  |  ● TIM 2: %d  (Target 100)", s1, s2)
 		end
 	else
 		local s1 = scores[1] or 0
 		local s2 = scores[2] or 0
 		local s3 = scores[3] or 0
 		local s4 = scores[4] or 0
-		scoreLabel.Text = string.format("K1: %d | K2: %d | K3: %d | K4: %d", s1, s2, s3, s4)
-		for s = 1, 4 do prevScores[s] = scores[s] or 0 end
+		local changed = false
+		local oldCopy: { [number]: number } = {}
+		for s = 1, 4 do
+			oldCopy[s] = prevScores[s] or 0
+			if oldCopy[s] ~= (scores[s] or 0) then
+				changed = true
+			end
+			prevScores[s] = scores[s] or 0
+		end
+		if changed then
+			UIController.TriggerScoreCountUp(oldCopy, { [1] = s1, [2] = s2, [3] = s3, [4] = s4 }, "solo")
+		else
+			scoreLabel.Text = string.format("K1: %d | K2: %d | K3: %d | K4: %d", s1, s2, s3, s4)
+		end
 	end
 end
 
 -- ====================================================================
--- PEMBARUAN INDIKATOR GILIRAN & TOMBOL PAS
+-- PEMBARUAN INDIKATOR GILIRAN 3D & TOMBOL PAS (GRUP B)
 -- ====================================================================
 
-local function updateTurnIndicator(seat: number, deadline: number)
+local function ensureTurn3DIndicators()
+	if turnBillboardPart and turnBillboardPart.Parent then
+		return
+	end
+
+	local uiFeel = FeelConfig.UI_FEEL
+
+	-- 1. Anchor Part untuk BillboardGui di atas kepala kursi aktif
+	local part = Instance.new("Part")
+	part.Name = "TurnIndicatorAnchor"
+	part.Size = Vector3.new(0.2, 0.2, 0.2)
+	part.Transparency = 1
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "TurnIndicatorBillboard"
+	bb.Size = UDim2.new(0, uiFeel.TURN_BILLBOARD_SIZE_PX.X, 0, uiFeel.TURN_BILLBOARD_SIZE_PX.Y)
+	bb.AlwaysOnTop = true
+	bb.Enabled = false
+	bb.Parent = part
+
+	local ringFrame = Instance.new("Frame")
+	ringFrame.Name = "TurnRingFrame"
+	ringFrame.Size = UDim2.new(1, -8, 1, -8)
+	ringFrame.Position = UDim2.new(0, 4, 0, 4)
+	ringFrame.BackgroundColor3 = UITheme.COLORS.WOOD_DARK
+	ringFrame.BackgroundTransparency = 0.15
+	ringFrame.BorderSizePixel = 0
+	ringFrame.Parent = bb
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = ringFrame
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "RingStroke"
+	stroke.Color = UITheme.COLORS.BULB_YELLOW
+	stroke.Thickness = 3
+	stroke.Parent = ringFrame
+
+	local nameLbl = Instance.new("TextLabel")
+	nameLbl.Name = "TurnSeatName"
+	nameLbl.Size = UDim2.new(0.68, 0, 1, 0)
+	nameLbl.Position = UDim2.new(0, 10, 0, 0)
+	nameLbl.BackgroundTransparency = 1
+	nameLbl.Font = UITheme.FONTS.TITLE
+	nameLbl.TextSize = 13
+	nameLbl.TextColor3 = UITheme.COLORS.BULB_YELLOW
+	nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+	nameLbl.Text = "GILIRAN"
+	nameLbl.Parent = ringFrame
+
+	local timeLbl = Instance.new("TextLabel")
+	timeLbl.Name = "TurnRingTimer"
+	timeLbl.Size = UDim2.new(0.28, 0, 1, 0)
+	timeLbl.Position = UDim2.new(0.70, 0, 0, 0)
+	timeLbl.BackgroundTransparency = 1
+	nameLbl.Font = UITheme.FONTS.TITLE
+	timeLbl.Font = UITheme.FONTS.NUMBERS
+	timeLbl.TextSize = 14
+	timeLbl.TextColor3 = UITheme.COLORS.CREAM_TEXT
+	timeLbl.Text = "15s"
+	timeLbl.Parent = ringFrame
+
+	part.Parent = workspace
+
+	-- 2. Marker/Cincin Cahaya halus di permukaan meja dekat kursi aktif (Lapisan 4 Lingkungan)
+	local marker = Instance.new("Part")
+	marker.Name = "TurnTableSpotlight"
+	marker.Shape = Enum.PartType.Cylinder
+	marker.Size = uiFeel.TURN_TABLE_MARKER_SIZE
+	marker.Material = Enum.Material.Neon
+	marker.Color = UITheme.COLORS.BULB_YELLOW
+	marker.Transparency = 1.0 -- Tersembunyi saat idle
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.CanQuery = false
+	marker.CanTouch = false
+	marker.Parent = workspace
+
+	turnBillboardPart = part
+	turnBillboardGui = bb
+	turnRingFrame = ringFrame
+	turnRingStroke = stroke
+	turnNameLabel = nameLbl
+	turnCountdownLabel = timeLbl
+	turnTableMarker = marker
+end
+
+--[=[
+	Memperbarui indikator giliran 4 lapisan (Grup B):
+	1. Gerakan: Billboard berpindah halus ke atas kepala kursi aktif + cincin berdenyut + kamera condong (jika giliran sendiri).
+	2. Suara: Bunyi "turn_ting" di posisi kursi aktif.
+	3. Visual: Nama + cincin timer kuning bohlam di atas kepala & HUD bawah.
+	4. Lingkungan: Cincin sorotan lampu halus di tepi meja dekat kursi aktif.
+]=]
+local function updateTurnIndicator(seat: number, deadline: number, playAudio: boolean?)
 	if not turnLabel or not timerLabel or not bottomHudFrame then return end
 
-	local isMyTurn = (seat == ClientState.mySeat)
-	local isMatchActive = (ClientState.currentPhase == "in_progress")
+	local isMyTurn = (seat > 0 and seat == ClientState.mySeat)
+	local isMatchActive = (ClientState.currentPhase == "in_progress" or ClientState.currentPhase == "playing")
 
 	bottomHudFrame.Visible = isMatchActive
+	ensureTurn3DIndicators()
+
+	-- Reset state peringatan waktu untuk giliran baru
+	if playAudio then
+		lastWarningSec = -1
+		hasFlickeredThisTurn = false
+	end
+
+	-- Lapisan 1 Kamera: Condong maju saat giliran sendiri, rileks saat giliran lawan
+	CameraController.SetTurnLean(isMyTurn and isMatchActive)
+
+	local seatName = if isMyTurn then "KAMU" else (BOT_NAMES[seat] or string.format("Kursi %d", seat))
 
 	if isMyTurn then
 		turnLabel.Text = "GILIRANMU PASANG KARTU"
 		turnLabel.TextColor3 = UITheme.COLORS.BULB_YELLOW
 	else
-		local seatName = BOT_NAMES[seat] or string.format("Kursi %d", seat)
 		turnLabel.Text = string.format("GILIRAN: %s", seatName)
 		turnLabel.TextColor3 = UITheme.COLORS.CREAM_TEXT
+	end
+
+	-- Perbarui posisi Billboard 3D & Marker Meja
+	local tbl = getActiveTableModel()
+	local seatPart = if tbl and seat > 0 then tbl:FindFirstChild("Seat" .. seat) :: Seat? else nil
+
+	if isMatchActive and seat > 0 and seatPart and turnBillboardPart and turnBillboardGui and turnRingFrame then
+		local uiFeel = FeelConfig.UI_FEEL
+		local targetPos = seatPart.Position + uiFeel.TURN_BILLBOARD_OFFSET
+
+		TweenService:Create(
+			turnBillboardPart,
+			TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ CFrame = CFrame.new(targetPos) }
+		):Play()
+
+		turnBillboardGui.Enabled = true
+		if turnNameLabel then
+			turnNameLabel.Text = if isMyTurn then "★ GILIRANMU" else seatName
+		end
+		if turnRingStroke then
+			turnRingStroke.Color = UITheme.COLORS.BULB_YELLOW
+		end
+		UIAnimator.Pulse(turnRingFrame, uiFeel.TURN_RING_PULSE_SCALE, uiFeel.TURN_RING_PULSE_TIME * 0.5)
+
+		-- Posisi sorotan meja di depan kursi aktif
+		if turnTableMarker then
+			local markerCF = (seatPart.CFrame * CFrame.new(0, 1.38, -1.15)) * CFrame.Angles(0, 0, math.pi / 2)
+			turnTableMarker.Color = UITheme.COLORS.BULB_YELLOW
+			TweenService:Create(
+				turnTableMarker,
+				TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ CFrame = markerCF, Transparency = 0.55 }
+			):Play()
+		end
+
+		if playAudio then
+			SoundManager.PlayTurnTing(seatPart.Position)
+		end
+	else
+		if turnBillboardGui then turnBillboardGui.Enabled = false end
+		if turnTableMarker then turnTableMarker.Transparency = 1.0 end
 	end
 
 	-- Periksa kelayakan tombol PAS
@@ -265,26 +528,83 @@ local function updateTurnIndicator(seat: number, deadline: number)
 	end
 end
 
+--[=[
+	Memicu efek Peringatan Waktu 4 lapisan saat sisa waktu <= 10 detik (Grup B):
+	1. Gerakan: Cincin indikator giliran & label timer berdenyut cepat (Pulse).
+	2. Suara: Bunyi detak "timer_tick" halus per detik.
+	3. Visual: Cincin indikator & teks timer berubah menjadi merah cabai menyala.
+	4. Lingkungan: Lampu bohlam pos ronda berkedip sekali saat menyentuh 10 detik.
+]=]
+function UIController.TriggerTimeWarning(remainingSec: number)
+	local uiFeel = FeelConfig.UI_FEEL
+	local isCritical = (remainingSec <= uiFeel.TIME_CRITICAL_THRESHOLD)
+
+	-- Lapisan 2: Suara detak timer
+	SoundManager.PlayTimerTick(isCritical)
+
+	-- Lapisan 1 & 3: Denyut & warna merah pada HUD timer dan cincin 3D
+	if timerLabel then
+		timerLabel.TextColor3 = UITheme.COLORS.CHILI_RED
+		UIAnimator.Pulse(timerLabel, uiFeel.TIME_WARNING_PULSE_SCALE, uiFeel.TIME_WARNING_PULSE_TIME)
+	end
+
+	if turnRingFrame then
+		UIAnimator.Pulse(turnRingFrame, uiFeel.TIME_WARNING_PULSE_SCALE, uiFeel.TIME_WARNING_PULSE_TIME)
+	end
+	if turnRingStroke then
+		turnRingStroke.Color = UITheme.COLORS.CHILI_RED
+	end
+	if turnCountdownLabel then
+		turnCountdownLabel.TextColor3 = UITheme.COLORS.CHILI_RED
+	end
+	if turnTableMarker and turnTableMarker.Transparency < 1.0 then
+		turnTableMarker.Color = UITheme.COLORS.CHILI_RED
+	end
+
+	-- Lapisan 4: Bohlam lampu meja berkedip sekali saat memasuki ambang peringatan (<= 10s)
+	if not hasFlickeredThisTurn then
+		hasFlickeredThisTurn = true
+		TileAnimator.FlickerLamp()
+	end
+end
+
 -- Timer countdown loop
 local function startTimerLoop()
 	if timerConnection then timerConnection:Disconnect() end
 
 	timerConnection = RunService.Heartbeat:Connect(function()
-		if not timerLabel or not ClientState.turnDeadline or ClientState.currentPhase ~= "in_progress" then
+		local isActive = (ClientState.currentPhase == "in_progress" or ClientState.currentPhase == "playing")
+		if not timerLabel or not ClientState.turnDeadline or not isActive then
 			if timerLabel then timerLabel.Text = "" end
 			return
 		end
 
 		local remaining = math.max(0, ClientState.turnDeadline - os.clock())
+		local wholeSec = math.ceil(remaining)
+
 		if remaining > 0 then
-			timerLabel.Text = string.format("(%ds)", math.ceil(remaining))
-			if remaining <= 5 then
-				timerLabel.TextColor3 = UITheme.COLORS.CHILI_RED
+			timerLabel.Text = string.format("(%ds)", wholeSec)
+			if turnCountdownLabel then
+				turnCountdownLabel.Text = string.format("%ds", wholeSec)
+			end
+
+			local warnThreshold = FeelConfig.UI_FEEL.TIME_WARNING_THRESHOLD
+			if wholeSec <= warnThreshold then
+				if wholeSec ~= lastWarningSec then
+					lastWarningSec = wholeSec
+					UIController.TriggerTimeWarning(wholeSec)
+				end
 			else
 				timerLabel.TextColor3 = UITheme.COLORS.BULB_YELLOW
+				if turnCountdownLabel then
+					turnCountdownLabel.TextColor3 = UITheme.COLORS.CREAM_TEXT
+				end
 			end
 		else
 			timerLabel.Text = "(0s)"
+			if turnCountdownLabel then
+				turnCountdownLabel.Text = "0s"
+			end
 		end
 	end)
 end
@@ -512,21 +832,50 @@ local function updateSettingsDisplay()
 end
 
 -- ====================================================================
--- HINT & ONBOARDING TOAST
+-- HINT & NOTIFIKASI TENGAH ATAS (SLIDE-IN / FADE-OUT 4 LAPISAN)
 -- ====================================================================
 
-function UIController.ShowHint(text: string, durationSeconds: number?)
+local activeToastToken = 0
+
+--[=[
+	Menampilkan notifikasi singkat di tengah atas (UI_UX_SPEC.md §7, GAME_FEEL.md §4):
+	1. Gerakan: Slide-in dari atas dengan Easing Back Out, keluar Slide-out / Fade-out dengan Quad In.
+	2. Suara: Bunyi klik/ting halus sesuai jenis notifikasi.
+	3. Visual: Banner kayu tua dengan aksen border warna kontekstual (kuning bohlam / merah cabai).
+	4. Lingkungan: Mengayunkan halus indikator atas tanpa menghalangi pandangan meja.
+]=]
+function UIController.ShowNotification(text: string, durationSeconds: number?, accentColor: Color3?)
 	if not hintToastFrame or not hintToastLabel then return end
 
+	local uiFeel = FeelConfig.UI_FEEL
+	activeToastToken += 1
+	local myToken = activeToastToken
+
 	hintToastLabel.Text = text
-	local dur = durationSeconds or 4.0
-	UIAnimator.SlideInTop(hintToastFrame, UDim.new(0, 55), 0.25)
+	local color = accentColor or UITheme.COLORS.BULB_YELLOW
+	hintToastLabel.TextColor3 = color
+	local stroke = hintToastFrame:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color
+	end
+
+	-- Lapisan 2: Suara UI halus
+	SoundManager.PlayHover()
+
+	-- Lapisan 1: Slide-in dengan Back Out + Pulse halus
+	local dur = durationSeconds or uiFeel.NOTIFY_HOLD_TIME
+	UIAnimator.SlideInTop(hintToastFrame, UDim.new(0, uiFeel.NOTIFY_TARGET_Y_OFFSET), uiFeel.NOTIFY_SLIDE_IN_TIME)
+	UIAnimator.Pulse(hintToastFrame, 1.04, 0.20)
 
 	task.delay(dur, function()
-		if hintToastFrame and hintToastFrame.Visible then
-			UIAnimator.SlideOutTop(hintToastFrame, 0.25)
+		if activeToastToken == myToken and hintToastFrame and hintToastFrame.Visible then
+			UIAnimator.SlideOutTop(hintToastFrame, uiFeel.NOTIFY_FADE_OUT_TIME)
 		end
 	end)
+end
+
+function UIController.ShowHint(text: string, durationSeconds: number?)
+	UIController.ShowNotification(text, durationSeconds, UITheme.COLORS.BULB_YELLOW)
 end
 
 -- ====================================================================
@@ -1435,14 +1784,29 @@ function UIController.Init()
 	GameEvents.On("TurnStarted", function(seat, deadline)
 		ClientState.currentTurn = seat
 		ClientState.turnDeadline = deadline
-		updateTurnIndicator(seat, deadline)
+		updateTurnIndicator(seat, deadline, true)
 
-		-- Beri hint pertama kali giliran sendiri jika belum pernah
-		local s = SettingsController.GetSettings()
-		if seat == ClientState.mySeat and not s.hasSeenTutorial then
-			UIController.ShowHint("Pilih kartu di rakmu lalu pasang di ujung barisan meja.", 4.0)
-			SettingsController.SetSetting("hasSeenTutorial", true)
-			SettingsController.Save()
+		-- Notifikasi "Giliranmu" saat giliran pemain lokal dimulai (UI_UX_SPEC.md §7)
+		if seat == ClientState.mySeat and ClientState.mySeat > 0 then
+			local s = SettingsController.GetSettings()
+			if not s.hasSeenTutorial then
+				UIController.ShowNotification("Giliranmu! Pilih kartu di rakmu lalu pasang di ujung meja.", 3.5, UITheme.COLORS.BULB_YELLOW)
+				SettingsController.SetSetting("hasSeenTutorial", true)
+				SettingsController.Save()
+			else
+				UIController.ShowNotification("Giliranmu!", 1.8, UITheme.COLORS.BULB_YELLOW)
+			end
+		end
+	end)
+
+	GameEvents.On("PlayerPassed", function(seat, _passStreak)
+		local passName = if seat == ClientState.mySeat then "Kamu" else (BOT_NAMES[seat] or string.format("Kursi %d", seat))
+		UIController.ShowNotification(string.format("%s pas (ketuk meja)", passName), 2.0, UITheme.COLORS.CHILI_RED)
+	end)
+
+	GameEvents.On("RoundStarted", function(_roundNumber, _openerSeat, reshuffleCount)
+		if typeof(reshuffleCount) == "number" and reshuffleCount > 0 then
+			UIController.ShowNotification("Kocok ulang: tidak ada balak pembuka", 2.8, UITheme.COLORS.BULB_YELLOW)
 		end
 	end)
 
@@ -1471,6 +1835,9 @@ function UIController.Init()
 					menuOpenButton.Visible = false
 				end
 			elseif action == "stand" then
+				if lobbyModal and lobbyModal.Visible then
+					UIAnimator.PopOut(lobbyModal, 0.2)
+				end
 				if menuOpenButton then
 					menuOpenButton.Visible = true
 				end
@@ -1505,10 +1872,43 @@ function UIController.Destroy()
 		timerConnection = nil
 	end
 
+	if activeScoreConn then
+		activeScoreConn:Disconnect()
+		activeScoreConn = nil
+	end
+
+	if turnBillboardPart then
+		turnBillboardPart:Destroy()
+		turnBillboardPart = nil
+		turnBillboardGui = nil
+		turnRingFrame = nil
+		turnRingStroke = nil
+		turnNameLabel = nil
+		turnCountdownLabel = nil
+	end
+
+	if turnTableMarker then
+		turnTableMarker:Destroy()
+		turnTableMarker = nil
+	end
+
 	if screenGui then
 		screenGui:Destroy()
 		screenGui = nil
 	end
+end
+
+-- Ekspos helper untuk FeelLab & unit test M5 Grup B
+UIController.UpdateTurnIndicator = updateTurnIndicator
+UIController.GetTurnIndicatorObjects = function()
+	ensureTurn3DIndicators()
+	return turnBillboardGui, turnRingFrame, turnTableMarker
+end
+UIController.GetScoreLabel = function()
+	return scoreLabel
+end
+UIController.GetHintToastFrame = function()
+	return hintToastFrame
 end
 
 return UIController

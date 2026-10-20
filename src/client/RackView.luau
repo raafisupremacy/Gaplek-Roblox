@@ -34,6 +34,7 @@ export type RackViewType = {
 	GetTileIndex: (self: RackViewType, tile: BasePart) -> number?,
 	LiftTile: (self: RackViewType, index: number, height: number, duration: number?) -> (),
 	ResetTilePosition: (self: RackViewType, index: number, duration: number?) -> (),
+	HighlightPlayableTiles: (self: RackViewType, playableIndices: { [number]: boolean }) -> (),
 	ShakeTile: (self: RackViewType, index: number) -> (),
 	Destroy: (self: RackViewType) -> (),
 }
@@ -45,23 +46,33 @@ local TILT_ANGLE_DEG = -22.0 -- Miring ke belakang menghadap POV kamera
 local RackView = {}
 RackView.__index = RackView
 
--- Helper mencari RackAnchor kursi di Workspace
-local function getSeatRackAnchor(seatIndex: number): CFrame
-	local posRonda = workspace:FindFirstChild("PosRonda")
-	local tbl = posRonda and posRonda:FindFirstChild("Table")
-	local seat = tbl and tbl:FindFirstChild("Seat" .. seatIndex) :: Seat?
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
 
+-- Helper mencari RackAnchor kursi di Workspace (adaptif terhadap meja aktif tempat pemain duduk)
+local function getSeatRackAnchor(seatIndex: number): CFrame
+	local char = localPlayer and localPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local activeTable: Instance? = nil
+	if hum and hum.SeatPart and hum.SeatPart.Parent then
+		activeTable = hum.SeatPart.Parent
+	end
+	if not activeTable then
+		local posRonda = workspace:FindFirstChild("PosRonda")
+		activeTable = posRonda and posRonda:FindFirstChild("Table")
+	end
+
+	local seat = activeTable and activeTable:FindFirstChild("Seat" .. seatIndex) :: Seat?
 	if seat then
 		local rackAtt = seat:FindFirstChild("RackAnchor") :: Attachment?
 		if rackAtt then
 			return rackAtt.WorldCFrame
 		end
-		-- Fallback jika attachment tidak ditemukan
-		return seat.CFrame * CFrame.new(0, 1.95, -0.95)
+		return seat.CFrame * CFrame.new(0, 1.45, -0.60)
 	end
 
 	-- Fallback default
-	return CFrame.new(0, 4.15, 3.4)
+	return CFrame.new(0, 4.00, 2.95)
 end
 
 --[=[
@@ -176,6 +187,27 @@ function RackView:ResetTilePosition(index: number, duration: number?)
 		{ CFrame = baseCF }
 	)
 	tween:Play()
+end
+
+--[=[
+	Mengangkat tipis kartu-kartu yang sah dimainkan saat giliran pemain lokal dimulai (GAME_FEEL.md §4).
+]=]
+function RackView:HighlightPlayableTiles(playableIndices: { [number]: boolean })
+	local liftH = FeelConfig.UI_FEEL.TURN_PLAYABLE_CARD_LIFT
+	local dur = FeelConfig.UI_FEEL.TURN_PLAYABLE_LIFT_TIME
+
+	for i, tilePart in ipairs(self.tiles) do
+		local baseCF = self.baseCFrames[i]
+		if tilePart and baseCF then
+			local targetCF = if playableIndices[i] then (baseCF * CFrame.new(0, liftH, 0)) else baseCF
+			local tw = TweenService:Create(
+				tilePart,
+				TweenInfo.new(dur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+				{ CFrame = targetCF }
+			)
+			tw:Play()
+		end
+	end
 end
 
 --[=[

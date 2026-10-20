@@ -23,6 +23,7 @@ local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
 local FeelConfig = require(sharedFolder:WaitForChild("FeelConfig"))
 local Remotes = require(sharedFolder:WaitForChild("Remotes"))
 local HandController = require(script.Parent:WaitForChild("HandController"))
+local CameraFX = require(script.Parent:WaitForChild("CameraFX"))
 
 local localPlayer = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -171,34 +172,32 @@ local function hideStandUI()
 	end
 end
 
--- Efek kamera getar & punch
-local currentShakeAmp = 0.0
-local shakeDuration = 0.0
-local shakeStartTime = 0.0
-
 --[=[
 	Memicu getaran kamera (Screen Shake) saat hentakan kuat.
 ]=]
-function CameraController.Shake(amplitude: number?, duration: number?)
-	if FeelConfig.USER_SETTINGS.REDUCE_SHAKE then return end
-	currentShakeAmp = amplitude or FeelConfig.SHAKE.AMPLITUDE
-	shakeDuration = duration or FeelConfig.SHAKE.DURATION
-	shakeStartTime = os.clock()
+function CameraController.Shake(amplitude: number?, duration: number?): boolean
+	return CameraFX.TriggerShake(amplitude, duration)
 end
 
 --[=[
 	Memicu FOV punch (kamera melonggar/memukul sesaat) lalu pulih halus.
 ]=]
-function CameraController.PunchFOV(punchDeg: number?)
-	if FeelConfig.USER_SETTINGS.REDUCE_SHAKE then return end
-	local punch = punchDeg or FeelConfig.FOV.PUNCH_DEGREES
-	camera.FieldOfView = FeelConfig.CAMERA.DEFAULT_FOV + punch
-	local tw = TweenService:Create(
-		camera,
-		TweenInfo.new(FeelConfig.FOV.RECOVERY_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ FieldOfView = FeelConfig.CAMERA.DEFAULT_FOV }
-	)
-	tw:Play()
+function CameraController.PunchFOV(punchDeg: number?): boolean
+	return CameraFX.TriggerFOVPunch(camera, punchDeg)
+end
+
+--[=[
+	Mengatur condong kamera saat giliran pemain lokal dimulai/berakhir (Grup B).
+]=]
+function CameraController.SetTurnLean(active: boolean)
+	CameraFX.SetTurnLean(active)
+end
+
+--[=[
+	Mengambil state condong kamera saat ini (isLeaning, leanAlpha).
+]=]
+function CameraController.GetTurnLeanState(): (boolean, number)
+	return CameraFX.GetTurnLeanState()
 end
 
 -- Loop update kamera setiap frame
@@ -210,27 +209,20 @@ local function updateCameraFrame()
 	local povOffset = FeelConfig.POV_OFFSET.POSITION
 	local anchorCF = currentAnchor.WorldCFrame
 
-	-- Hitung offset getaran kamera (Camera Shake)
-	local shakeOffset = Vector3.zero
-	if currentShakeAmp > 0 and shakeDuration > 0 then
-		local elapsed = os.clock() - shakeStartTime
-		if elapsed < shakeDuration then
-			local decay = 1.0 - (elapsed / shakeDuration)
-			local decayFactor = math.pow(decay, FeelConfig.SHAKE.DECAY * 2)
-			local rx = (math.random() * 2 - 1) * currentShakeAmp * 0.05 * decayFactor
-			local ry = (math.random() * 2 - 1) * currentShakeAmp * 0.05 * decayFactor
-			local rz = (math.random() * 2 - 1) * currentShakeAmp * 0.02 * decayFactor
-			shakeOffset = Vector3.new(rx, ry, rz)
-		else
-			currentShakeAmp = 0.0
-		end
-	end
+	-- Hitung offset gabungan Grup B dari CameraFX (Napas + Condong Giliran + Shake)
+	local fxPosOffset, fxPitchDeg, fxRollDeg = CameraFX.ComputeFrameOffsets(os.clock())
 
-	-- Posisi dasar mata dengan offset FeelConfig + shake
-	local baseCF = anchorCF * CFrame.new(povOffset + shakeOffset)
+	-- Posisi dasar mata dengan offset FeelConfig + efek CameraFX
+	local baseCF = anchorCF * CFrame.new(povOffset + fxPosOffset)
 
-	-- Rotasi kamera dengan rotasi yaw (tengok) dan pitch (tunduk/dongak)
-	local rotCF = CFrame.Angles(0, math.rad(currentYaw), 0) * CFrame.Angles(math.rad(currentPitch), 0, 0)
+	-- Rotasi kamera dengan rotasi yaw (tengok), pitch (tunduk/dongak + napas/condong), dan roll (shake)
+	local totalPitch = math.clamp(
+		currentPitch + fxPitchDeg,
+		FeelConfig.CAMERA.PITCH_MIN_DEG - 4,
+		FeelConfig.CAMERA.PITCH_MAX_DEG + 4
+	)
+	local rotCF = CFrame.Angles(0, math.rad(currentYaw), 0)
+		* CFrame.Angles(math.rad(totalPitch), 0, math.rad(fxRollDeg))
 	camera.CFrame = baseCF * rotCF
 
 	-- Jaga agar kepala lokal tetap tidak terlihat jika terjadi reload animasi
@@ -348,6 +340,7 @@ function CameraController.StopFirstPerson()
 	isSeated = false
 	currentSeatIndex = nil
 	currentAnchor = nil
+	CameraFX.Reset()
 
 	-- Bersihkan HandController
 	if currentHandCtrl then
@@ -373,6 +366,11 @@ function CameraController.StopFirstPerson()
 	end
 
 	-- Kembalikan kamera ke kontrol standar Roblox
+	local char = localPlayer.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		camera.CameraSubject = hum
+	end
 	camera.CameraType = Enum.CameraType.Custom
 	camera.FieldOfView = 70
 
