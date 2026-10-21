@@ -375,7 +375,7 @@ end
 
 -- Forward declarations
 local runTurnCycle: (session: GameSession) -> ()
-local startNextRound: (session: GameSession) -> ()
+local startRound: (session: GameSession) -> ()
 
 --[=[
 	Eksekusi AutoPlay jika pemain timeout (afk).
@@ -469,11 +469,12 @@ runTurnCycle = function(session: GameSession)
 end
 
 --[=[
-	Memulai ronde berikutnya dalam pertandingan meja.
+	Memulai satu ronde (ronde 1 atau ronde lanjutan) dalam pertandingan meja.
+	Nomor ronde dikendalikan tepat satu tempat: diawali roundNumber = 1 oleh NewGame,
+	lalu dinaikkan di handleRoundEnd sebelum memulai ronde berikutnya.
 ]=]
-startNextRound = function(session: GameSession)
+startRound = function(session: GameSession)
 	if not session.currentGame then return end
-	session.currentGame.roundNumber += 1
 
 	local reshuffleCount = 0
 	local hands: { [number]: { Tile } }
@@ -629,9 +630,11 @@ local function handleRoundEnd(session: GameSession, reason: "emptied" | "blocked
 		TableService.BroadcastRoomsUpdated()
 	else
 		-- Pacing sebelum ronde berikutnya
-		task.delay(FeelConfig.DURATIONS.ROUND_END_DELAY or 4.0, function()
-			if session.isMatchRunning then
-				startNextRound(session)
+		local delayTime = if fastMode then 0.01 else (FeelConfig.DURATIONS.ROUND_END_DELAY or 4.0)
+		task.delay(delayTime, function()
+			if session.isMatchRunning and session.currentGame then
+				session.currentGame.roundNumber += 1
+				startRound(session)
 			end
 		end)
 	end
@@ -649,8 +652,9 @@ function GameService.PlayMove(seat: number, tile: Tile, side: Side, tableId: num
 		return false, "MATCH_NOT_RUNNING"
 	end
 
-	-- DominoLogic.ApplyMove memvalidasi giliran, kepemilikan kartu, dan kecocokan board
-	local ok, errReason = DominoLogic.ApplyMove(session.currentRound, seat, tile, side)
+	-- DominoLogic.ApplyMove memvalidasi giliran, kepemilikan kartu, dan kecocokan board (termasuk syarat [6-6] pada ronde 1)
+	local isFirstRound = if session.currentGame then (session.currentGame.roundNumber == 1) else false
+	local ok, errReason = DominoLogic.ApplyMove(session.currentRound, seat, tile, side, isFirstRound)
 	if not ok then
 		return false, errReason
 	end
@@ -724,7 +728,8 @@ function GameService.PassTurn(seat: number, tableId: number?): (boolean, string?
 		session.knownPassedEnds[seat][session.currentRound.board.right] = true
 	end
 
-	local ok, errReason = DominoLogic.Pass(session.currentRound, seat)
+	local isFirstRound = (session.roundNumber == 1)
+	local ok, errReason = DominoLogic.Pass(session.currentRound, seat, isFirstRound)
 	if not ok then
 		return false, errReason
 	end
@@ -807,7 +812,6 @@ function GameService.StartMatch(mode: Mode, arg2: any?, arg3: any?): (boolean, s
 
 	session.sessionId += 1
 	session.currentGame = DominoLogic.NewGame(mode)
-	session.currentGame.roundNumber = 0 -- startNextRound akan menaikkannya ke 1 untuk ronde pertama
 	session.isMatchRunning = true
 	session.currentPhase = "dealing"
 
@@ -819,7 +823,7 @@ function GameService.StartMatch(mode: Mode, arg2: any?, arg3: any?): (boolean, s
 	TableService.BroadcastRoomsUpdated()
 
 	task.spawn(function()
-		startNextRound(session)
+		startRound(session)
 	end)
 
 	return true, nil
@@ -856,11 +860,19 @@ end
 -- INISIALISASI & REMOTE EVENTS
 -- ====================================================================
 
+local remoteConnections: { RBXScriptConnection } = {}
+
 function GameService.Init()
 	Remotes.initServer()
 
+	-- Bersihkan koneksi remote lama jika Init dipanggil ulang (mencegah duplikasi listener)
+	for _, conn in ipairs(remoteConnections) do
+		conn:Disconnect()
+	end
+	table.clear(remoteConnections)
+
 	-- 1. RequestPlay (Pemasangan kartu dari pemain)
-	Remotes.getEvent("RequestPlay").OnServerEvent:Connect(function(player, tileToken, side)
+	local connPlay = Remotes.getEvent("RequestPlay").OnServerEvent:Connect(function(player, tileToken, side)
 		if not Remotes.checkRateLimit(player, "RequestPlay") then return end
 		if not Remotes.validateString(tileToken, 3, 30) then return end
 		if not Remotes.validateWhitelist(side, { "left", "right", "center" }) then return end
@@ -883,9 +895,10 @@ function GameService.Init()
 			Remotes.getEvent("Rejected"):FireClient(player, err)
 		end
 	end)
+	table.insert(remoteConnections, connPlay)
 
 	-- 2. RequestPass (Permintaan pas dari pemain)
-	Remotes.getEvent("RequestPass").OnServerEvent:Connect(function(player)
+	local connPass = Remotes.getEvent("RequestPass").OnServerEvent:Connect(function(player)
 		if not Remotes.checkRateLimit(player, "RequestPass") then return end
 
 		local TableService = getTableService()
@@ -899,9 +912,10 @@ function GameService.Init()
 			Remotes.getEvent("Rejected"):FireClient(player, err)
 		end
 	end)
+	table.insert(remoteConnections, connPass)
 
 	-- 3. RequestEmote (Emote ekspresi dari pemain)
-	Remotes.getEvent("RequestEmote").OnServerEvent:Connect(function(player, emoteId)
+	local connEmote = Remotes.getEvent("RequestEmote").OnServerEvent:Connect(function(player, emoteId)
 		if not Remotes.checkRateLimit(player, "RequestEmote") then return end
 		if not Remotes.validateString(emoteId, 1, 20) then return end
 		if not Remotes.validateWhitelist(emoteId, FeelConfig.EMOTE.ORDER) then return end
@@ -914,9 +928,10 @@ function GameService.Init()
 		-- Broadcast EmotePlayed hanya ke pemain di meja yang sama
 		broadcastToTable(tid, "EmotePlayed", seat, emoteId)
 	end)
+	table.insert(remoteConnections, connEmote)
 
 	-- 4. Listener saat pemain disconnect / leave
-	Players.PlayerRemoving:Connect(function(player)
+	local connRemoving = Players.PlayerRemoving:Connect(function(player)
 		local TableService = getTableService()
 		local tid = TableService.GetPlayerTable(player)
 		local seat = TableService.GetPlayerSeat(player)
@@ -932,8 +947,13 @@ function GameService.Init()
 			end
 		end
 	end)
+	table.insert(remoteConnections, connRemoving)
 
 	Logger.info("GameService", "GameService multi-room (4 meja) berhasil diinisialisasi.")
+end
+
+function GameService.GetConnectionCount(): number
+	return #remoteConnections
 end
 
 -- ====================================================================
