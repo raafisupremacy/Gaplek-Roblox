@@ -39,9 +39,13 @@ export type RackViewType = {
 	Destroy: (self: RackViewType) -> (),
 }
 
-local CARD_WIDTH = 0.50
-local CARD_GAP = 0.08
-local TILT_ANGLE_DEG = -22.0 -- Miring ke belakang menghadap POV kamera
+local LOCAL_CARD_WIDTH = 0.42
+local LOCAL_CARD_GAP = 0.04
+local LOCAL_CARD_PORTRAIT_ROT = CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(0, 0, math.rad(90)) * CFrame.Angles(0, 0, math.rad(-26))
+
+local OPPONENT_CARD_WIDTH = 0.26
+local OPPONENT_CARD_GAP = 0.03
+local OPPONENT_CARD_ROT = CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(0, 0, math.rad(90)) * CFrame.Angles(0, 0, math.rad(-55))
 
 local RackView = {}
 RackView.__index = RackView
@@ -107,23 +111,31 @@ function RackView:RenderRack(hand: { Tile })
 	if n == 0 then return end
 
 	local anchorCF = getSeatRackAnchor(self.seatIndex)
-	local totalWidth = n * CARD_WIDTH + (n - 1) * CARD_GAP
-	local startX = -totalWidth / 2 + CARD_WIDTH / 2
+	local isLocal = self.isLocalPlayer
+	local cardWidth = if isLocal then LOCAL_CARD_WIDTH else OPPONENT_CARD_WIDTH
+	local cardGap = if isLocal then LOCAL_CARD_GAP else OPPONENT_CARD_GAP
+	local cardRot = if isLocal then LOCAL_CARD_PORTRAIT_ROT else OPPONENT_CARD_ROT
+	local cardSize = if isLocal then Vector3.new(0.84, 0.12, 0.42) else Vector3.new(0.55, 0.08, 0.275)
+	local yOffset = if isLocal then 0.42 else 0.12
+
+	local totalWidth = n * cardWidth + (n - 1) * cardGap
+	local startX = -totalWidth / 2 + cardWidth / 2
 
 	for i, t in ipairs(hand) do
 		local leftVal = if (t :: any).a ~= nil then (t :: any).a else (t :: any)[1]
 		local rightVal = if (t :: any).b ~= nil then (t :: any).b else (t :: any)[2]
 		local tilePart = TileFactory.CreateTile(leftVal, rightVal, self.isLocalPlayer)
 		tilePart.Name = string.format("RackTile_%d_%d", leftVal, rightVal)
+		tilePart.Size = cardSize
 		tilePart:SetAttribute("RackIndex", i)
 		tilePart:SetAttribute("SeatIndex", self.seatIndex)
 
 		-- Hitung posisi slot kartu relatif ke RackAnchor
-		local offsetX = startX + (i - 1) * (CARD_WIDTH + CARD_GAP)
+		local offsetX = startX + (i - 1) * (cardWidth + cardGap)
 		-- Berdiri di atas meja dan miring menghadap pemain
 		local slotCF = anchorCF
-			* CFrame.new(offsetX, 0.08, 0)
-			* CFrame.Angles(math.rad(TILT_ANGLE_DEG), 0, 0)
+			* CFrame.new(offsetX, yOffset, 0)
+			* cardRot
 
 		tilePart.CFrame = slotCF
 
@@ -161,8 +173,8 @@ function RackView:LiftTile(index: number, height: number, duration: number?)
 	if not tilePart or not baseCF then return end
 
 	local dur = duration or FeelConfig.DURATIONS.HOVER or 0.12
-	-- Angkat sepanjang sumbu vertikal lokal rak
-	local liftedCF = baseCF * CFrame.new(0, height, 0)
+	-- Angkat vertikal ke atas
+	local liftedCF = baseCF + Vector3.new(0, height, 0)
 
 	local tween = TweenService:Create(
 		tilePart,
@@ -199,7 +211,7 @@ function RackView:HighlightPlayableTiles(playableIndices: { [number]: boolean })
 	for i, tilePart in ipairs(self.tiles) do
 		local baseCF = self.baseCFrames[i]
 		if tilePart and baseCF then
-			local targetCF = if playableIndices[i] then (baseCF * CFrame.new(0, liftH, 0)) else baseCF
+			local targetCF = if playableIndices[i] then (baseCF + Vector3.new(0, liftH, 0)) else baseCF
 			local tw = TweenService:Create(
 				tilePart,
 				TweenInfo.new(dur, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
@@ -218,12 +230,15 @@ function RackView:ShakeTile(index: number)
 	local baseCF = self.baseCFrames[index]
 	if not tilePart or not baseCF then return end
 
+	local anchorCF = getSeatRackAnchor(self.seatIndex)
+	local rightVec = anchorCF.RightVector
+
 	task.spawn(function()
 		local shakeOffsets = { 0.08, -0.08, 0.05, -0.05, 0.02, 0 }
 		local stepDur = (FeelConfig.DURATIONS.ILLEGAL_SHAKE or 0.3) / #shakeOffsets
 
 		for _, offX in ipairs(shakeOffsets) do
-			local shakeCF = baseCF * CFrame.new(offX, 0, 0)
+			local shakeCF = baseCF + (rightVec * offX)
 			local tw = TweenService:Create(
 				tilePart,
 				TweenInfo.new(stepDur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),

@@ -18,12 +18,18 @@ local Workspace = game:GetService("Workspace")
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
 local FeelConfig = require(sharedFolder:WaitForChild("FeelConfig"))
 local Rng = require(sharedFolder:WaitForChild("Rng"))
+local TablePropsHelper = require(sharedFolder:WaitForChild("TablePropsHelper"))
 
 local SoundManager = require(script.Parent:WaitForChild("SoundManager"))
 
 local TileAnimator = {}
 
 local rng = Rng.fromRandom(Random.new(os.time()))
+local activeTableId: number = 1
+
+function TileAnimator.SetTableId(tableId: number)
+	activeTableId = tableId
+end
 
 -- Callback sinyal untuk CameraController (Shake & FOV punch)
 local onCameraShakeCallback: ((amplitude: number, duration: number) -> ())? = nil
@@ -107,12 +113,12 @@ end
 --[=[
 	Menggetarkan cangkir kopi di meja pos ronda saat hentakan terjadi.
 ]=]
-local function shakeCoffee(intensity: number)
+local function shakeCoffee(intensity: number, tableId: number?)
 	local tier = FeelConfig.USER_SETTINGS.QUALITY_TIER or FeelConfig.QUALITY.HIGH
 	if tier <= FeelConfig.QUALITY.LOW then return end
 
-	local posRonda = workspace:FindFirstChild("PosRonda")
-	local coffeeCup = posRonda and posRonda:FindFirstChild("GelasKopi", true) :: BasePart?
+	local tid = tableId or activeTableId
+	local coffeeCup = TablePropsHelper.GetCoffeeCup(tid)
 	if not coffeeCup then return end
 
 	local origCF = coffeeCup.CFrame
@@ -142,9 +148,9 @@ end
 --[=[
 	Mengayunkan bohlam pos ronda sesaat akibat hentakan / guncangan.
 ]=]
-local function swayLamp(swayDeg: number)
-	local posRonda = workspace:FindFirstChild("PosRonda")
-	local bulb = posRonda and posRonda:FindFirstChild("Bohlam", true) :: BasePart?
+local function swayLamp(swayDeg: number, tableId: number?)
+	local tid = tableId or activeTableId
+	local bulb = TablePropsHelper.GetBulb(tid)
 	if not bulb then return end
 
 	local origCF = bulb.CFrame
@@ -171,16 +177,23 @@ end
 --[=[
 	Mengekspos ayunan bohlam lampu pos ronda untuk dipakai sistem feel lain (mis. skor naik / giliran).
 ]=]
-function TileAnimator.SwayLamp(swayDeg: number?)
-	swayLamp(swayDeg or 1.2)
+function TileAnimator.SwayLamp(swayDeg: number?, tableId: number?)
+	swayLamp(swayDeg or 1.2, tableId)
+end
+
+--[=[
+	Mengekspos getaran cangkir kopi untuk dipakai sistem feel atau verifikasi pengujian.
+]=]
+function TileAnimator.ShakeCoffee(intensity: number?, tableId: number?)
+	shakeCoffee(intensity or 1.0, tableId)
 end
 
 --[=[
 	Mengedipkan lampu meja pos ronda sekali (reaksi lingkungan saat peringatan waktu <= 10 detik).
 ]=]
-function TileAnimator.FlickerLamp(dipRatio: number?, duration: number?)
-	local posRonda = workspace:FindFirstChild("PosRonda")
-	local bulb = posRonda and posRonda:FindFirstChild("Bohlam", true) :: BasePart?
+function TileAnimator.FlickerLamp(dipRatio: number?, duration: number?, tableId: number?)
+	local tid = tableId or activeTableId
+	local bulb = TablePropsHelper.GetBulb(tid)
 	if not bulb then return end
 
 	local pointLight = bulb:FindFirstChildOfClass("PointLight")
@@ -233,7 +246,7 @@ function TileAnimator.ShakeOtherTiles(excludeTile: BasePart?, centerPos: Vector3
 	if tier <= FeelConfig.QUALITY.LOW then return end
 
 	local radius = FeelConfig.ENVIRONMENT.OTHER_TILES_RADIUS
-	local boardContainer = workspace:FindFirstChild("TilesContainer") or workspace:FindFirstChild("GameBoardTiles")
+	local boardContainer = TablePropsHelper.GetTilesContainer()
 	if not boardContainer then return end
 
 	for _, child in ipairs(boardContainer:GetChildren()) do
