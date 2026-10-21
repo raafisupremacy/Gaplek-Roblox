@@ -72,7 +72,7 @@ local FeelConfig = {
 
 	-- Offset kamera first person dari Head/HumanoidRootPart saat duduk
 	POV_OFFSET = {
-		POSITION = Vector3.new(0, 0.4, -0.2), -- Sedikit maju dan di bawah mata
+		POSITION = Vector3.new(0, 0.05, -0.1), -- Tepat di posisi mata alami, maju di depan bahu
 		LEAN_FORWARD = 0.15, -- Condong ke depan saat giliran sendiri
 	},
 
@@ -121,7 +121,7 @@ local FeelConfig = {
 		NOTIFY_TARGET_Y_OFFSET = 58, -- Posisi Y di bawah bar atas (px)
 
 		-- 7. Indikator giliran (Billboard 3D + cincin timer + meja + kartu sah naik tipis)
-		TURN_BILLBOARD_OFFSET = Vector3.new(0, 3.1, 0), -- Offset di atas kursi/kepala pemain aktif
+		TURN_BILLBOARD_OFFSET = Vector3.new(0, 2.05, 0), -- Offset di atas kursi/kepala pemain aktif (bebas tabrakan Top HUD bar)
 		TURN_BILLBOARD_SIZE_PX = Vector2.new(170, 54), -- Ukuran BillboardGui indikator giliran
 		TURN_RING_PULSE_SCALE = 1.08, -- Skala denyut cincin indikator giliran
 		TURN_RING_PULSE_TIME = 0.55, -- Periode denyut cincin (detik)
@@ -163,9 +163,11 @@ local FeelConfig = {
 		BOT_ROUND_END_REACT_CHANCE = 0.65, -- Peluang bot bereaksi saat ronde selesai (clap/laugh vs sad/yah)
 	},
 
-	-- Parameter kamera first person duduk (FIRST_PERSON_HANDS.md §2, M3a)
+	-- Parameter kamera first person duduk (FIRST_PERSON_HANDS.md §2, M3a, Batch 2 Varian B Resmi Terpilih)
 	CAMERA = {
-		DEFAULT_FOV = 70,
+		DEFAULT_FOV = 82,
+		DEFAULT_PITCH_DEG = -36.0,
+		DEFAULT_CAM_HEIGHT = 3.55,
 		TRANSITION_TIME = 0.5,
 		YAW_MIN_DEG = -70, -- Batas tengok kiri (±70°)
 		YAW_MAX_DEG = 70,  -- Batas tengok kanan
@@ -174,13 +176,22 @@ local FeelConfig = {
 		MOUSE_SENSITIVITY = 0.12,
 		TOUCH_SENSITIVITY = 0.18,
 		NEAR_CLIP = 0.1, -- Cegah clipping torso/lengan
+		NEAR_OCCLUSION_THRESHOLD = 2.6, -- Jarak ambang (stud) untuk fade/hide anggota tubuh lawan yang terlalu dekat dengan lensa
 	},
 
 	-- Parameter jangkauan tangan IK & interaksi meja (stud)
 	HANDS = {
-		MAX_REACH_DISTANCE = 3.5, -- Jangkauan tangan langsung
-		MAX_TOSS_DISTANCE = 4.0, -- Jarak maksimum lemparan kartu ke ujung meja
+		MAX_REACH_DISTANCE = 1.80, -- Jangkauan IK tangan nyaman (tanpa distorsi torso)
+		MAX_TOSS_DISTANCE = 4.0, -- Jarak maksimum lemparan/luncuran kartu ke ujung meja
+		SLIDE_DURATION = 0.22, -- Durasi kartu meluncur ke target meja jika di luar jangkauan nyaman
 		DESK_SURFACE_Y_OFFSET = 0.05, -- Jarak aman di atas permukaan meja
+		MIN_HAND_DISTANCE_TO_CAM = 0.90, -- Batas aman jangkauan tangan agar tidak memotong bidang kamera
+		SEAT_DISTANCE = 3.45, -- Jarak kursi optimal hasil matriks empiris (bebas tabrakan meja)
+		REST_OFFSET_X = 1.65, -- Posisi istirahat tangan lokal membingkai rak di luar 7 kartu (stud)
+		REST_OFFSET_Z = -0.85, -- Posisi istirahat tangan lokal santai di tepi meja
+		OPPONENT_REST_OFFSET_X = 0.85, -- Posisi istirahat tangan lawan/bot di tepi meja samping rak
+		OPPONENT_REST_OFFSET_Z = -0.72, -- Posisi maju istirahat tangan lawan (tetap di tepi meja, tidak menjangkau ke tengah)
+		VISUAL_ARM_SCALE = 0.85, -- Skala visual lengan & tangan lokal (menempati ~12% layar, <= 15%)
 		HOVER_LIFT_HEIGHT = 0.15, -- Naik saat kartu di-hover
 		SELECT_LIFT_HEIGHT = 0.35, -- Naik saat kartu dipilih
 		ANGLE_VARIATION_DEG = 3.0, -- Variasi acak sudut kartu di meja (±3°)

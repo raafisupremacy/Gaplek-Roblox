@@ -21,10 +21,10 @@ BoardLayout.TILE_LENGTH = 1.0
 BoardLayout.TILE_WIDTH = 0.5
 BoardLayout.TILE_THICKNESS = 0.15
 
--- Dimensi meja kotak gaplek & kursi bakso (stud) — Opsi 1 (Stabilisasi v2)
+-- Dimensi meja kotak gaplek & kursi bakso (stud) — Opsi 1 (Stabilisasi v2 / Batch 2 Varian B)
 BoardLayout.TABLE_SIZE = Vector3.new(6.6, 0.28, 6.6)
 BoardLayout.TABLE_HALF_EXTENT = 3.30
-BoardLayout.SEAT_DISTANCE = 3.55
+BoardLayout.SEAT_DISTANCE = 3.45
 
 -- Parameter tata letak zona papan (stud)
 BoardLayout.LANE_SPACING_Z = 1.02
