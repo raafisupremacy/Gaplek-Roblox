@@ -13,7 +13,10 @@
 	- Menggunakan Object Pool untuk performa bebas stutter di mobile.
 ]=]
 
-local BoardLayout = require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("BoardLayout"))
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
+local BoardLayout = require(sharedFolder:WaitForChild("BoardLayout"))
+local TablePropsHelper = require(sharedFolder:WaitForChild("TablePropsHelper"))
 
 export type TileInstance = BasePart
 
@@ -40,16 +43,12 @@ local TileFactory = {}
 local tilePool: { TileInstance } = {}
 local activeTiles: { [TileInstance]: boolean } = {}
 
--- Folder wadah kartu di Workspace (dibuat saat runtime)
+-- Pool penyimpanan Frame titik pip kartu (bebas GC churn)
+local pipPool: { Frame } = {}
+
+-- Folder wadah kartu di Workspace (dibuat saat runtime via TablePropsHelper)
 local function getTilesFolder(): Folder
-	local existing = workspace:FindFirstChild("TilesContainer")
-	if existing and existing:IsA("Folder") then
-		return existing
-	end
-	local folder = Instance.new("Folder")
-	folder.Name = "TilesContainer"
-	folder.Parent = workspace
-	return folder
+	return TablePropsHelper.GetTilesContainer()
 end
 
 -- Folder penampung pool kartu tidak aktif
@@ -64,25 +63,77 @@ local function getPoolFolder(): Folder
 	return folder
 end
 
--- Helper membuat dot pip bulat
-local function createPipFrame(pos: Vector2, parent: GuiObject): Frame
-	local dot = Instance.new("Frame")
-	dot.Name = "Pip"
-	dot.AnchorPoint = Vector2.new(0.5, 0.5)
-	dot.Position = UDim2.new(pos.X, 0, pos.Y, 0)
-	dot.Size = UDim2.new(0, 16, 0, 16)
-	dot.BackgroundColor3 = PIP_COLOR
-	dot.BorderSizePixel = 0
+-- Helper mengambil pip dari pool atau membuat baru
+local function acquirePip(pos: Vector2, parent: Frame): Frame
+	local dot: Frame
+	if #pipPool > 0 then
+		dot = table.remove(pipPool, #pipPool) :: Frame
+		dot.Position = UDim2.new(pos.X, 0, pos.Y, 0)
+		dot.Parent = parent
+	else
+		dot = Instance.new("Frame")
+		dot.Name = "Pip"
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Position = UDim2.new(pos.X, 0, pos.Y, 0)
+		dot.Size = UDim2.new(0, 16, 0, 16)
+		dot.BackgroundColor3 = PIP_COLOR
+		dot.BorderSizePixel = 0
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = dot
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = dot
 
-	dot.Parent = parent
+		local aspect = Instance.new("UIAspectRatioConstraint")
+		aspect.AspectRatio = 1.0
+		aspect.AspectType = Enum.AspectType.FitWithinMaxSize
+		aspect.DominantAxis = Enum.DominantAxis.Width
+		aspect.Parent = dot
+		dot.Parent = parent
+	end
 	return dot
 end
 
--- Helper membangun elemen GUI pada SurfaceGui kartu (dioptimalkan me-reuse kontainer agar bebas GC churn)
+-- Helper mengembalikan pip ke pool (tanpa destroy)
+local function releasePip(dot: Frame)
+	dot.Parent = nil
+	table.insert(pipPool, dot)
+end
+
+-- Helper mengelola titik pip pada satu sisi kartu dengan sistem pooling / reuse Frame & UICorner (bebas GC churn)
+local function updateHalfPips(half: Frame, val: number)
+	local targetPips = PIP_COORDS[val] or {}
+	local targetCount = #targetPips
+
+	local currentPips: { Frame } = {}
+	for _, child in ipairs(half:GetChildren()) do
+		if child:IsA("Frame") and child.Name == "Pip" then
+			table.insert(currentPips, child)
+		end
+	end
+
+	-- Jika ada kelebihan pip di half, kembalikan ke pipPool (tanpa ClearAllChildren / destroy)
+	while #currentPips > targetCount do
+		local excess = table.remove(currentPips)
+		if excess then
+			releasePip(excess)
+		end
+	end
+
+	-- Perbarui posisi pip yang sudah ada
+	for i = 1, #currentPips do
+		local coord = targetPips[i]
+		local dot = currentPips[i]
+		dot.Position = UDim2.new(coord.X, 0, coord.Y, 0)
+	end
+
+	-- Jika kurang, ambil dari pipPool atau buat baru
+	for i = #currentPips + 1, targetCount do
+		local coord = targetPips[i]
+		acquirePip(coord, half)
+	end
+end
+
+-- Helper membangun elemen GUI pada SurfaceGui kartu (dioptimalkan me-reuse kontainer & pip agar bebas GC churn)
 local function setupTileGUI(gui: SurfaceGui, leftVal: number, rightVal: number)
 	local container = gui:FindFirstChild("FaceContainer") :: Frame?
 	local leftHalf: Frame?
@@ -129,24 +180,14 @@ local function setupTileGUI(gui: SurfaceGui, leftVal: number, rightVal: number)
 	else
 		leftHalf = container:FindFirstChild("LeftHalf") :: Frame?
 		rightHalf = container:FindFirstChild("RightHalf") :: Frame?
-		if leftHalf then leftHalf:ClearAllChildren() end
-		if rightHalf then rightHalf:ClearAllChildren() end
 	end
 
-	-- Render titik pada sisi kiri
+	-- Perbarui titik pada sisi kiri dan kanan menggunakan pool frame/corner yang sudah ada
 	if leftHalf then
-		local leftPips = PIP_COORDS[leftVal] or {}
-		for _, coord in ipairs(leftPips) do
-			createPipFrame(coord, leftHalf)
-		end
+		updateHalfPips(leftHalf, leftVal)
 	end
-
-	-- Render titik pada sisi kanan
 	if rightHalf then
-		local rightPips = PIP_COORDS[rightVal] or {}
-		for _, coord in ipairs(rightPips) do
-			createPipFrame(coord, rightHalf)
-		end
+		updateHalfPips(rightHalf, rightVal)
 	end
 end
 
@@ -261,11 +302,16 @@ function TileFactory.RecycleTile(tile: TileInstance)
 	if not activeTiles[tile] then return end
 	activeTiles[tile] = nil
 
-	TileFactory.SetGlow(tile, "none")
-	tile.CFrame = CFrame.new(0, -500, 0)
-	tile.Parent = getPoolFolder()
+	local ok = pcall(function()
+		TileFactory.SetGlow(tile, "none")
+		tile.Size = TILE_SIZE
+		tile.CFrame = CFrame.new(0, -500, 0)
+		tile.Parent = getPoolFolder()
+	end)
 
-	table.insert(tilePool, tile)
+	if ok then
+		table.insert(tilePool, tile)
+	end
 end
 
 --[=[
