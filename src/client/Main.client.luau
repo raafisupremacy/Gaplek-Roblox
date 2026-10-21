@@ -129,6 +129,7 @@ local function bootstrap()
 		isHost: boolean,
 		turnDeadline: number
 	)
+		print(string.format("[Main.client] StateSync received! seat=%d, handCount=%d, phase=%s", seat, #privateHand, phase))
 		ClientState.ApplyStateSync(
 			seat,
 			privateHand,
@@ -144,6 +145,7 @@ local function bootstrap()
 			isHost,
 			turnDeadline
 		)
+		print("[Main.client] After ApplyStateSync, mySeat is:", ClientState.mySeat)
 
 		-- Buat atau perbarui RackView untuk kursi pemain
 		if seat > 0 then
@@ -208,6 +210,9 @@ local function bootstrap()
 	end
 
 	GameEvents.On("TurnStarted", function(seat: number, deadline: number)
+		ClientState.currentTurn = seat
+		ClientState.turnDeadline = deadline
+		ClientState.UpdateCanPass()
 		local isMyTurnNow = (ClientState.mySeat > 0 and seat == ClientState.mySeat)
 		interactionController:SetTurnActive(isMyTurnNow)
 		updatePlayableRackHighlight(isMyTurnNow)
@@ -219,6 +224,7 @@ local function bootstrap()
 	end)
 
 	GameEvents.On("RoundStarted", function(roundNumber: number, openerSeat: number, reshuffleCount: number)
+		ClientState.roundNumber = roundNumber
 		SoundManager.PlayShuffle()
 	end)
 
@@ -283,15 +289,11 @@ local function bootstrap()
 			opponentRackViews[seat]:RenderRack(dummyHand)
 		end
 
-		-- Gerakkan tangan kursi terkait (animasi tangan IK)
+		-- Gerakkan tangan kursi terkait (animasi tangan IK hibrida: jangkau batas nyaman + luncur kartu jauh)
 		local hc = handControllers[seat]
 		if hc then
 			task.spawn(function()
-				if isDouble then
-					hc:Slam(nil, targetWorldCF, "MEDIUM")
-				else
-					hc:Place(nil, targetWorldCF, false)
-				end
+				hc:Place(targetPart, targetWorldCF, isDouble)
 			end)
 		end
 	end)
@@ -338,6 +340,7 @@ local function bootstrap()
 
 	-- Listener SeatChanged (Update kursi lokal, HandController semua kursi & bot, & pembersihan rak)
 	GameEvents.On("SeatChanged", function(seatIndex: number, userId: number, _username: string, isBot: boolean, action: string, _tableId: number?)
+		print(string.format("[Main.client] SeatChanged received! action=%s, seat=%d, user=%d, isLP=%s", action, seatIndex, userId, tostring(userId == localPlayer.UserId)))
 		if userId == localPlayer.UserId then
 			if action == "sit" then
 				ClientState.mySeat = seatIndex
@@ -414,9 +417,14 @@ local function bootstrap()
 
 			local tile = card.tile
 			if #ClientState.boardPlaced == 0 then
-				-- Board kosong: Hanya balak sah yang bisa jalan (ronde 1: 6-6, ronde >= 2: balak)
-				local isDouble = (tile.a == tile.b)
-				return { left = isDouble, right = isDouble }
+				-- Board kosong: Hanya balak sah yang bisa jalan (ronde 1: 6-6, ronde >= 2: semua balak)
+				local isOpeningLegal = false
+				if ClientState.roundNumber == 1 then
+					isOpeningLegal = (tile.a == 6 and tile.b == 6)
+				else
+					isOpeningLegal = (tile.a == tile.b)
+				end
+				return { left = isOpeningLegal, right = isOpeningLegal }
 			else
 				local canLeft = (ClientState.leftEnd ~= nil) and (tile.a == ClientState.leftEnd or tile.b == ClientState.leftEnd)
 				local canRight = (ClientState.rightEnd ~= nil) and (tile.a == ClientState.rightEnd or tile.b == ClientState.rightEnd)
@@ -447,6 +455,23 @@ local function bootstrap()
 		if feelLabModule then
 			local FeelLab = require(feelLabModule :: ModuleScript)
 			FeelLab.Init()
+		end
+	end)
+
+	-- 10. Kebersihan HUD: lipat Chat Roblox dan nonaktifkan kotak PlayerList ("Tricky")
+	task.spawn(function()
+		local StarterGui = game:GetService("StarterGui")
+		for _ = 1, 10 do
+			local ok1 = pcall(function()
+				StarterGui:SetCore("ChatActive", false)
+			end)
+			local ok2 = pcall(function()
+				StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
+			end)
+			if ok1 and ok2 then
+				break
+			end
+			task.wait(0.5)
 		end
 	end)
 

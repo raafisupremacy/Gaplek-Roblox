@@ -58,7 +58,12 @@ local function dispatch(eventName: string, ...: any)
 	local list = eventListeners[eventName]
 	if list then
 		for _, cb in ipairs(list) do
-			task.spawn(cb, ...)
+			task.spawn(function(...)
+				local ok, err = pcall(cb, ...)
+				if not ok then
+					warn(string.format("[GameEvents] Error in listener for '%s': %s", eventName, tostring(err)))
+				end
+			end, ...)
 		end
 	end
 end
@@ -85,6 +90,7 @@ function GameEvents.Init()
 	for _, name in ipairs(names) do
 		local remote = Remotes.getEvent(name)
 		remote.OnClientEvent:Connect(function(...: any)
+			print("[GameEvents] Remote fired from server:", name)
 			dispatch(name, ...)
 		end)
 	end

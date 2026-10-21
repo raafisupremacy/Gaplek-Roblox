@@ -20,6 +20,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
 local FeelConfig = require(sharedFolder:WaitForChild("FeelConfig"))
+local TablePropsHelper = require(sharedFolder:WaitForChild("TablePropsHelper"))
 
 local TileFactory = require(script.Parent:WaitForChild("TileFactory"))
 local RackView = require(script.Parent:WaitForChild("RackView"))
@@ -67,7 +68,7 @@ local function raycastFromScreen(screenPos: Vector2): RaycastResult?
 	params.FilterType = Enum.RaycastFilterType.Include
 
 	local includeList: { Instance } = {}
-	local tilesFolder = workspace:FindFirstChild("TilesContainer")
+	local tilesFolder = TablePropsHelper.GetTilesContainer()
 	if tilesFolder then
 		table.insert(includeList, tilesFolder)
 	end

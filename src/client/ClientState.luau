@@ -26,6 +26,7 @@ export type LocalCard = {
 }
 
 local ClientState = {}
+_G.LiveClientState = ClientState
 
 -- State lokal
 ClientState.mySeat = 0 -- 0 jika belum duduk
@@ -36,6 +37,8 @@ ClientState.currentPhase = "idle"
 ClientState.currentTurn = 0
 ClientState.passStreak = 0
 ClientState.turnDeadline = 0
+ClientState.canPass = false
+ClientState.roundNumber = 1
 
 -- Hand sendiri: [index] = { token = string, tile = Tile }
 ClientState.myHand = {} :: { LocalCard }
@@ -118,6 +121,8 @@ function ClientState.ApplyStateSync(
 		})
 	end
 
+	ClientState.UpdateCanPass()
+
 	emit("OnStateSynced")
 	emit("OnHandChanged", ClientState.myHand)
 	emit("OnBoardChanged", ClientState.boardPlaced, leftEnd, rightEnd)
@@ -175,6 +180,50 @@ end
 ]=]
 function ClientState.IsMyTurn(): boolean
 	return ClientState.mySeat > 0 and ClientState.currentTurn == ClientState.mySeat
+end
+
+--[=[
+	Mengecek apakah pemain lokal berhak/wajib melakukan pass (tidak ada kartu yang cocok).
+]=]
+function ClientState.CanPass(): boolean
+	if not ClientState.IsMyTurn() then
+		return false
+	end
+	if #ClientState.myHand == 0 then
+		return false
+	end
+
+	-- Jika belum ada kartu di meja:
+	if #ClientState.boardPlaced == 0 then
+		for _, card in ipairs(ClientState.myHand) do
+			if ClientState.roundNumber == 1 then
+				if card.tile.a == 6 and card.tile.b == 6 then
+					return false
+				end
+			else
+				if card.tile.a == card.tile.b then
+					return false
+				end
+			end
+		end
+		return true
+	end
+
+	-- Jika sudah ada kartu di meja:
+	local leftEnd = ClientState.leftEnd
+	local rightEnd = ClientState.rightEnd
+	for _, card in ipairs(ClientState.myHand) do
+		local a, b = card.tile.a, card.tile.b
+		if (leftEnd ~= nil and (a == leftEnd or b == leftEnd)) or (rightEnd ~= nil and (a == rightEnd or b == rightEnd)) then
+			return false
+		end
+	end
+
+	return true
+end
+
+function ClientState.UpdateCanPass()
+	ClientState.canPass = ClientState.CanPass()
 end
 
 return ClientState
