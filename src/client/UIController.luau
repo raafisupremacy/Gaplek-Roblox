@@ -579,7 +579,7 @@ local function startTimerLoop()
 			return
 		end
 
-		local remaining = math.max(0, ClientState.turnDeadline - os.clock())
+		local remaining = math.max(0, ClientState.turnDeadline - os.time())
 		local wholeSec = math.ceil(remaining)
 
 		if remaining > 0 then
@@ -944,6 +944,9 @@ function UIController.Init()
 	screenGui.ResetOnSpawn = false
 	screenGui.DisplayOrder = 10
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	pcall(function()
+		screenGui.ScreenInsets = Enum.ScreenInsets.DeviceSafeInsets
+	end)
 
 	-- 1. TOP BAR HUD (Tinggi 44 px, bebas obstruksi meja 360x640)
 	topHudFrame = UITheme.CreateRusticFrame(
@@ -967,7 +970,7 @@ function UIController.Init()
 		UITheme.COLORS.BULB_YELLOW
 	)
 	standButton.Visible = false
-	table.insert(connections, standButton.MouseButton1Click:Connect(function()
+	table.insert(connections, standButton.Activated:Connect(function()
 		Remotes.getEvent("RequestStand"):FireServer()
 	end))
 
@@ -983,7 +986,7 @@ function UIController.Init()
 		UITheme.COLORS.BULB_YELLOW
 	)
 	menuOpenButton.Visible = true
-	table.insert(connections, menuOpenButton.MouseButton1Click:Connect(function()
+	table.insert(connections, menuOpenButton.Activated:Connect(function()
 		if mainMenuModal then
 			if mainMenuModal.Visible then
 				UIAnimator.PopOut(mainMenuModal)
@@ -1016,7 +1019,7 @@ function UIController.Init()
 		UITheme.COLORS.BULB_YELLOW,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, ruleButton.MouseButton1Click:Connect(function()
+	table.insert(connections, ruleButton.Activated:Connect(function()
 		if ruleModal then
 			if ruleModal.Visible then
 				UIAnimator.PopOut(ruleModal)
@@ -1037,7 +1040,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, settingsButton.MouseButton1Click:Connect(function()
+	table.insert(connections, settingsButton.Activated:Connect(function()
 		if settingsModal then
 			if settingsModal.Visible then
 				UIAnimator.PopOut(settingsModal)
@@ -1048,11 +1051,11 @@ function UIController.Init()
 		end
 	end))
 
-	-- 2. BOTTOM GAMEPLAY HUD (Tinggi 44 px, bebas obstruksi meja)
+	-- 2. BOTTOM GAMEPLAY HUD (Tinggi 36 px, ramping bebas obstruksi meja)
 	bottomHudFrame = UITheme.CreateRusticFrame(
 		"BottomHudFrame",
-		UDim2.new(0.65, 0, 0, 44),
-		UDim2.new(0.5, 0, 1, -56),
+		UDim2.new(0.55, 0, 0, 36),
+		UDim2.new(0.5, 0, 1, -40),
 		screenGui,
 		UITheme.COLORS.WOOD_DARK,
 		UITheme.COLORS.WOOD_LIGHT
@@ -1068,6 +1071,7 @@ function UIController.Init()
 		bottomHudFrame,
 		UITheme.COLORS.CREAM_TEXT
 	)
+	turnLabel.TextSize = 16
 	timerLabel = UITheme.CreateHeading(
 		"TimerLabel",
 		"",
@@ -1076,20 +1080,22 @@ function UIController.Init()
 		bottomHudFrame,
 		UITheme.COLORS.BULB_YELLOW
 	)
+	timerLabel.TextSize = 16
 
-	-- Tombol PAS (Kanan Bawah, >= 48 px)
+	-- Tombol PAS (Kanan Bawah, SafeArea compliant, >= 44 px)
 	passButton = UITheme.CreateButton(
 		"PassBtn",
 		"PAS (LEWAT)",
-		UDim2.new(0, 150, 0, 48),
-		UDim2.new(1, -160, 1, -58),
+		UDim2.new(0, 130, 0, 44),
+		UDim2.new(1, -16, 1, -16),
 		screenGui,
 		UITheme.COLORS.CHILI_RED,
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
+	passButton.AnchorPoint = Vector2.new(1, 1)
 	passButton.Visible = false
-	table.insert(connections, passButton.MouseButton1Click:Connect(function()
+	table.insert(connections, passButton.Activated:Connect(function()
 		if ClientState.canPass then
 			Remotes.getEvent("RequestPass"):FireServer()
 		else
@@ -1169,7 +1175,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, lobbyModeButton.MouseButton1Click:Connect(function()
+	table.insert(connections, lobbyModeButton.Activated:Connect(function()
 		local nextMode: Mode = if ClientState.mode == "2v2" then "solo" else "2v2"
 		Remotes.getEvent("RequestSetMode"):FireServer(nextMode)
 	end))
@@ -1184,7 +1190,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, lobbyStartButton.MouseButton1Click:Connect(function()
+	table.insert(connections, lobbyStartButton.Activated:Connect(function()
 		Remotes.getEvent("RequestStart"):FireServer()
 	end))
 
@@ -1255,7 +1261,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, roundNextButton.MouseButton1Click:Connect(function()
+	table.insert(connections, roundNextButton.Activated:Connect(function()
 		UIAnimator.PopOut(roundModal)
 	end))
 
@@ -1316,7 +1322,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, gameRematchButton.MouseButton1Click:Connect(function()
+	table.insert(connections, gameRematchButton.Activated:Connect(function()
 		Remotes.getEvent("RequestRematch"):FireServer()
 		UIAnimator.PopOut(gameModal)
 	end))
@@ -1331,7 +1337,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, gameStandButton.MouseButton1Click:Connect(function()
+	table.insert(connections, gameStandButton.Activated:Connect(function()
 		Remotes.getEvent("RequestStand"):FireServer()
 		UIAnimator.PopOut(gameModal)
 	end))
@@ -1361,12 +1367,12 @@ function UIController.Init()
 	sfxValLabel = UITheme.CreateHeading("SfxVal", "90%", UDim2.new(0, 45, 0, 28), UDim2.new(0, 205, 0, 45), settingsModal)
 	local sfxMinus = UITheme.CreateButton("SfxMinus", "-", UDim2.new(0, 36, 0, 36), UDim2.new(0, 160, 0, 41), settingsModal)
 	local sfxPlus = UITheme.CreateButton("SfxPlus", "+", UDim2.new(0, 36, 0, 36), UDim2.new(0, 260, 0, 41), settingsModal)
-	table.insert(connections, sfxMinus.MouseButton1Click:Connect(function()
+	table.insert(connections, sfxMinus.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("sfxVolume", math.clamp(s.sfxVolume - 0.1, 0, 1))
 		updateSettingsDisplay()
 	end))
-	table.insert(connections, sfxPlus.MouseButton1Click:Connect(function()
+	table.insert(connections, sfxPlus.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("sfxVolume", math.clamp(s.sfxVolume + 0.1, 0, 1))
 		updateSettingsDisplay()
@@ -1377,12 +1383,12 @@ function UIController.Init()
 	ambValLabel = UITheme.CreateHeading("AmbVal", "70%", UDim2.new(0, 45, 0, 28), UDim2.new(0, 205, 0, 85), settingsModal)
 	local ambMinus = UITheme.CreateButton("AmbMinus", "-", UDim2.new(0, 36, 0, 36), UDim2.new(0, 160, 0, 81), settingsModal)
 	local ambPlus = UITheme.CreateButton("AmbPlus", "+", UDim2.new(0, 36, 0, 36), UDim2.new(0, 260, 0, 81), settingsModal)
-	table.insert(connections, ambMinus.MouseButton1Click:Connect(function()
+	table.insert(connections, ambMinus.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("ambienceVolume", math.clamp(s.ambienceVolume - 0.1, 0, 1))
 		updateSettingsDisplay()
 	end))
-	table.insert(connections, ambPlus.MouseButton1Click:Connect(function()
+	table.insert(connections, ambPlus.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("ambienceVolume", math.clamp(s.ambienceVolume + 0.1, 0, 1))
 		updateSettingsDisplay()
@@ -1397,7 +1403,7 @@ function UIController.Init()
 		UDim2.new(0, 160, 0, 121),
 		settingsModal
 	)
-	table.insert(connections, shakeToggleBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, shakeToggleBtn.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("reduceShake", not s.reduceShake)
 		updateSettingsDisplay()
@@ -1408,12 +1414,12 @@ function UIController.Init()
 	sensValLabel = UITheme.CreateHeading("SensVal", "1.0x", UDim2.new(0, 45, 0, 28), UDim2.new(0, 205, 0, 165), settingsModal)
 	local sensMinus = UITheme.CreateButton("SensMinus", "-", UDim2.new(0, 36, 0, 36), UDim2.new(0, 160, 0, 161), settingsModal)
 	local sensPlus = UITheme.CreateButton("SensPlus", "+", UDim2.new(0, 36, 0, 36), UDim2.new(0, 260, 0, 161), settingsModal)
-	table.insert(connections, sensMinus.MouseButton1Click:Connect(function()
+	table.insert(connections, sensMinus.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("sensitivity", math.clamp(s.sensitivity - 0.2, 0.4, 2.5))
 		updateSettingsDisplay()
 	end))
-	table.insert(connections, sensPlus.MouseButton1Click:Connect(function()
+	table.insert(connections, sensPlus.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		SettingsController.SetSetting("sensitivity", math.clamp(s.sensitivity + 0.2, 0.4, 2.5))
 		updateSettingsDisplay()
@@ -1428,7 +1434,7 @@ function UIController.Init()
 		UDim2.new(0, 160, 0, 201),
 		settingsModal
 	)
-	table.insert(connections, qualityBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, qualityBtn.Activated:Connect(function()
 		local s = SettingsController.GetSettings()
 		local nextTier = if s.graphicsQuality == "sedang" then "tinggi" elseif s.graphicsQuality == "tinggi" then "rendah" else "sedang"
 		SettingsController.SetSetting("graphicsQuality", nextTier)
@@ -1446,7 +1452,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, settingsCloseBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, settingsCloseBtn.Activated:Connect(function()
 		SettingsController.Save()
 		UIAnimator.PopOut(settingsModal)
 	end))
@@ -1499,7 +1505,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, ruleCloseBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, ruleCloseBtn.Activated:Connect(function()
 		UIAnimator.PopOut(ruleModal)
 	end))
 
@@ -1532,7 +1538,7 @@ function UIController.Init()
 		UITheme.COLORS.WOOD_DARK,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	mainMenuModal.Visible = true
+	mainMenuModal.Visible = false
 
 	local menuTitle = UITheme.CreateHeading(
 		"MenuTitle",
@@ -1565,7 +1571,7 @@ function UIController.Init()
 		Color3.fromRGB(255, 255, 255),
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, playBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, playBtn.Activated:Connect(function()
 		Remotes.getEvent("RequestQuickPlay"):FireServer()
 		if mainMenuModal then UIAnimator.PopOut(mainMenuModal) end
 		setMenuCinematicCamera(false)
@@ -1582,7 +1588,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, roomsBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, roomsBtn.Activated:Connect(function()
 		if mainMenuModal then UIAnimator.PopOut(mainMenuModal, 0.15) end
 		if roomsModal then
 			UIAnimator.PopIn(roomsModal, 0.25)
@@ -1601,7 +1607,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, setBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, setBtn.Activated:Connect(function()
 		if settingsModal then
 			updateSettingsDisplay()
 			UIAnimator.PopIn(settingsModal)
@@ -1619,7 +1625,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, rulesBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, rulesBtn.Activated:Connect(function()
 		if ruleModal then
 			UIAnimator.PopIn(ruleModal)
 		end
@@ -1636,7 +1642,7 @@ function UIController.Init()
 		Color3.fromRGB(220, 210, 195),
 		UITheme.COLORS.WOOD_LIGHT
 	)
-	table.insert(connections, exploreBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, exploreBtn.Activated:Connect(function()
 		if mainMenuModal then UIAnimator.PopOut(mainMenuModal) end
 		setMenuCinematicCamera(false)
 	end))
@@ -1738,7 +1744,7 @@ function UIController.Init()
 			UITheme.COLORS.BULB_YELLOW
 		)
 		roomJoinButtons[tInfo.id] = joinBtn
-		table.insert(connections, joinBtn.MouseButton1Click:Connect(function()
+		table.insert(connections, joinBtn.Activated:Connect(function()
 			Remotes.getEvent("RequestJoinTable"):FireServer(tInfo.id)
 			if roomsModal then UIAnimator.PopOut(roomsModal) end
 			setMenuCinematicCamera(false)
@@ -1756,7 +1762,7 @@ function UIController.Init()
 		UITheme.COLORS.CREAM_TEXT,
 		UITheme.COLORS.BULB_YELLOW
 	)
-	table.insert(connections, roomsBackBtn.MouseButton1Click:Connect(function()
+	table.insert(connections, roomsBackBtn.Activated:Connect(function()
 		if roomsModal then UIAnimator.PopOut(roomsModal, 0.15) end
 		if mainMenuModal then UIAnimator.PopIn(mainMenuModal, 0.25) end
 	end))
@@ -1784,6 +1790,7 @@ function UIController.Init()
 	GameEvents.On("TurnStarted", function(seat, deadline)
 		ClientState.currentTurn = seat
 		ClientState.turnDeadline = deadline
+		ClientState.UpdateCanPass()
 		updateTurnIndicator(seat, deadline, true)
 
 		-- Notifikasi "Giliranmu" saat giliran pemain lokal dimulai (UI_UX_SPEC.md §7)
@@ -1858,7 +1865,7 @@ function UIController.Init()
 	startTimerLoop()
 	updateScores()
 	updateLobby()
-	setMenuCinematicCamera(true)
+	setMenuCinematicCamera(false)
 end
 
 function UIController.Destroy()
