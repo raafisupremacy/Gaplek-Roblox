@@ -303,7 +303,8 @@ function DominoLogic.ApplyMove(
 	round: RoundState,
 	seat: number,
 	tile: Tile,
-	side: Side
+	side: Side,
+	isFirstRound: boolean?
 ): (boolean, string?)
 	-- 1. Validasi giliran
 	if round.currentSeat ~= seat then
@@ -335,11 +336,16 @@ function DominoLogic.ApplyMove(
 
 		-- Verifikasi syarat pembuka
 		if round.lastMover == nil and round.openerSeat == seat then
-			-- Jika kartu pembuka, pastikan sesuai aturan
-			-- (Jika ronde 1: harus [6-6]; jika ronde >= 2: harus balak)
-			-- Catatan: jika pembuka adalah balak, maka valid
-			if not isDouble and (actualTile.a ~= 6 or actualTile.b ~= 6) then
-				return false, "OPENING_MUST_BE_DOUBLE"
+			-- Jika ronde 1: HANYA [6-6] yang boleh dibuka (GAME_RULES.md §4)
+			-- Jika ronde >= 2: Balak apa saja boleh dibuka
+			if isFirstRound == true then
+				if actualTile.a ~= 6 or actualTile.b ~= 6 then
+					return false, "FIRST_ROUND_MUST_BE_6_6"
+				end
+			else
+				if not isDouble then
+					return false, "OPENING_MUST_BE_DOUBLE"
+				end
 			end
 		end
 
@@ -410,7 +416,7 @@ end
 	HANYA diizinkan jika pemain TIDAK memiliki langkah legal pada board saat ini.
 	Jika pemain punya langkah legal: DITOLAK (GAME_RULES.md §3 poin 6).
 ]=]
-function DominoLogic.Pass(round: RoundState, seat: number): (boolean, string?)
+function DominoLogic.Pass(round: RoundState, seat: number, isFirstRound: boolean?): (boolean, string?)
 	if round.currentSeat ~= seat then
 		return false, "NOT_YOUR_TURN"
 	end
@@ -422,7 +428,7 @@ function DominoLogic.Pass(round: RoundState, seat: number): (boolean, string?)
 
 	-- Jika board kosong, pembuka tidak boleh pas jika memiliki kartu pembuka yang legal
 	if #round.board.placed == 0 then
-		local openingMoves = DominoLogic.GetOpeningMoves(hand, false)
+		local openingMoves = DominoLogic.GetOpeningMoves(hand, isFirstRound == true)
 		if #openingMoves > 0 then
 			return false, "HAS_LEGAL_MOVES"
 		end
