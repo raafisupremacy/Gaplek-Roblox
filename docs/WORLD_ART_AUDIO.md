@@ -26,12 +26,12 @@ Semua dunia dibuat oleh kode (`WorldBuilder`) dari Part sederhana dengan materia
 Menghitung posisi dan rotasi tiap kartu dari urutan kartu di board.
 Syarat:
 1. Fungsi murni: input = daftar `Placed`, output = `CFrame` tiap kartu relatif ke pusat meja.
-2. Semua kartu tetap di dalam zona `BOARD_ZONE` (7.0×5.6 stud); tidak ada tumpang tindih (OBB/SAT overlap = 0).
+2. Semua kartu tetap di dalam zona `BOARD_ZONE` (5.6×5.9 stud; X_LIMIT = 2.40, LANE_SPACING_Z = 1.02, auto-centering XZ); tidak ada tumpang tindih (OBB/SAT overlap = 0).
 3. Kapasitas ≥ 28 kartu (termasuk skenario balak melintang berturut-turut dan skenario terburuk 27 kartu di satu sisi rantai).
-4. Barisan membentuk zig-zag (snake polyline): baris tengah (Lane 0) berjarak lajur Z = 1.10 stud, batas belokan X = 2.90 stud. Balak dipasang melintang tegak lurus arah baris.
+4. Barisan membentuk zig-zag (snake polyline): baris tengah (Lane 0) berjarak lajur Z = 1.02 stud, batas belokan X = 2.40 stud. Balak dipasang melintang tegak lurus arah baris.
 5. Ujung barisan selalu di dalam `REACH_RADIUS` kursi aktif atau dapat dicapai dengan toss ≤ `MAX_TOSS_DISTANCE` (4.0 studs).
 6. Deterministik: semua client hasilnya sama.
-Bukti matematis kapasitas: dengan jarak lajur Z = 1.10 stud dan batas X = 2.90 stud, tiap lajur penuh memuat 6-7 kartu. Rantai 5 lajur (Z ∈ [-2.8, 2.8]) memuat hingga 31+ kartu. Fuzzing 1.000 permainan nyata dari DominoLogic membuktikan 0% tumpang tindih dan 100% kartu di atas meja.
+Bukti matematis kapasitas: dengan jarak lajur Z = 1.02 stud dan batas X = 2.40 stud, tiap lajur penuh memuat 5-6 kartu. Rantai 5 lajur memuat hingga 28+ kartu dengan margin daun meja aman (maxOuterX = 2.75 ≤ 3.30, maxOuterZ = 2.925 ≤ 3.30 stud). Fuzzing 1.000 permainan nyata dari DominoLogic membuktikan 0% tumpang tindih dan 100% kartu di atas meja.
 
 ## 5. Lighting dan atmosfer
 - `ClockTime` ≈ 0:30, `Brightness` rendah, `Ambient` gelap biru kehangatan.

@@ -26,13 +26,17 @@ HandController.new(seat, character)
 :Destroy()
 ```
 
-## 5. Anggaran jangkauan (reach budget)
-Pemain duduk, tangan harus mencapai: rak sendiri, ujung barisan, dan area kocok.
-- Parameter yang disetel di Studio: `TABLE_SIZE` (9.0×9.0), `SEAT_OFFSET` (kursi di ±4.35 dari tengah, dada dekat tepi meja), `TABLE_HEIGHT` (tinggi permukaan ≈ 1.95 di atas dudukan), `TILE_SIZE` (1.0×0.5×0.15), `BOARD_ZONE` (7.0×5.6), `MAX_TOSS_DISTANCE` (4.0 studs).
-- Ukuran resmi (disetel di M2): meja = 9.0×9.0 stud, tinggi permukaan ≈ 1.95 di atas dudukan kursi, kartu = 1.0×0.5×0.15 stud, `BOARD_ZONE` = 7.0×5.6 stud.
-- Barisan kartu dibuat **kompak** (snake polyline) di zona tengah, bukan lurus panjang (lihat BoardLayout). Jarak ke ujung barisan terjauh selalu ≤ 4.0 studs dari kursi terkait.
-- Jika ujung barisan di luar `REACH_RADIUS`: tangan menjangkau sampai batas, kartu dilepas dan **meluncur/ditoss maksimal `MAX_TOSS_DISTANCE`** ke posisi akhir, dengan suara dan visual sama seperti pasang biasa. Ini menjaga sensasi tanpa tangan mustahil.
-- Spike M3b wajib mengukur: jangkauan tiap kursi dengan beberapa tipe tubuh R15 (kurus, normal, besar, tinggi), dan menyetel parameter di atas.
+## 5. Anggaran jangkauan (reach budget) & Mekanisme Tangan Hibrida
+Pemain duduk, tangan harus mencapai rak sendiri dan menaruh kartu di meja.
+- **Dimensi Resmi Meja & Posisi Duduk (D-10, D-19)**: Meja `6.6×6.6` stud, Kursi di `3.55` stud dari pusat meja (`+0.25` di luar meja), Rak kartu lokal di atas bibir taplak (`Z = -0.60` dari kursi = `2.95` stud dari pusat meja), Kartu `1.0×0.5×0.15` stud, `BOARD_ZONE = 5.6×5.9` stud.
+- **Penyelesaian Kontradiksi Jangkauan Lengan (Batch 2)**:
+  - Panjang 3D Euclidean lengan R15 (bahu ke ujung tangan terentang lurus penuh) adalah **2.16 hingga 2.60 studs** (Kurus: 2.16, Normal: 2.37, Besar: 2.60, Tinggi: 2.57).
+  - Jangkauan horizontal $Z$ ke depan dari dada ke permukaan meja ($\Delta Y \approx -0.8$ stud) adalah **±1.3 hingga 1.5 studs**. Pengukuran lama (±1.3) mengukur proyeksi horizontal meja, sedangkan laporan baru mengukur panjang rantai tulang 3D.
+- **Mekanisme Hibrida (Reach + Slide)**:
+  - Tangan avatar menjangkau secara realistis menggunakan IKControl hingga batas jangkauan nyaman: `MAX_REACH_DISTANCE = 1.80` studs (`FeelConfig.MAX_REACH_DISTANCE`).
+  - Untuk target dekat (rak dan tepi meja dekat): tangan menggapai 100% langsung ke kartu.
+  - Untuk target menengah/jauh (pusat meja dan ujung lawan): tangan menjangkau maksimal 1.80 stud ke arah target, menghentak kuat dengan suara banting ("TAK!"), lalu kartu dilepas dan meluncur (*slide/toss*) cepat (`SLIDE_DURATION = 0.22` s) ke posisi akhir di papan. Efek partikel kepulan debu meja dan getaran kamera tetap terpicu di titik hentak tangan.
+- **Posisi Istirahat Tangan**: Tangan beristirahat di bawah layar (`X = ±1.15`, `Y = 0.45`, `Z = -0.90` relatif dudukan kursi), bernapas halus, tidak menutupi kartu di rak lokal maupun papan permainan.
 
 ## 6. Pemilihan kartu
 - Kartu berdiri di rak di depan pemain, menghadap pemain. Lawan melihat punggung kartu.
