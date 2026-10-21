@@ -701,7 +701,7 @@ function TableService.Init()
 					prompt.ActionText = "Duduk"
 					prompt.ObjectText = string.format("%s - Kursi %d", tblState.name, seatIndex)
 					prompt.HoldDuration = 0.2
-					prompt.MaxActivationDistance = 6.0
+					prompt.MaxActivationDistance = 4.0
 					prompt.RequiresLineOfSight = false
 					prompt.KeyboardKeyCode = Enum.KeyCode.E
 					prompt.UIOffset = Vector2.new(0, 15)
