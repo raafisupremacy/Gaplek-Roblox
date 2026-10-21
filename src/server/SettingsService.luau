@@ -175,4 +175,17 @@ function SettingsService.Init()
 	Logger.info("SettingsService", "SettingsService berhasil diinisialisasi.")
 end
 
+--[=[
+	Membersihkan cache untuk kebutuhan pengujian unit otomatis.
+]=]
+function SettingsService.ResetForTesting(userId: number?)
+	if userId then
+		settingsCache[userId] = nil
+		lastSaveTimes[userId] = nil
+	else
+		table.clear(settingsCache)
+		table.clear(lastSaveTimes)
+	end
+end
+
 return SettingsService
