@@ -43,20 +43,21 @@ local currentPitch = -10.0 -- Default sedikit menunduk melihat meja & kartu di r
 -- Daftar objek yang disembunyikan dan transparansi aslinya
 local hiddenParts: { [BasePart]: number } = {}
 local hiddenDecals: { [Decal]: number } = {}
+local hiddenSurfaceAppearances: { [SurfaceAppearance]: Instance } = {}
+local hiddenOpponentParts: { [BasePart]: number } = {}
+local hiddenShirt: Shirt? = nil
 
 -- Koneksi input & event yang aktif
 local connections: { [string]: RBXScriptConnection } = {}
 
--- UI tombol berdiri (ScreenGui)
-local standGui: ScreenGui? = nil
-
 --[=[
-	Menyembunyikan kepala, rambut, dan aksesori kepala khusus di client lokal.
-	Lengan, tangan, dan badan tetap terlihat jelas.
+	Menyembunyikan kepala, rambut, aksesori kepala, torso, dan paha pada client lokal.
+	LENGAN BAWAH (LowerArm) dan TANGAN (Hand) TETAP 100% TERLIHAT untuk POV first-person yang autentik.
 ]=]
 local function hideHeadAndAccessories(character: Model)
 	table.clear(hiddenParts)
 	table.clear(hiddenDecals)
+	table.clear(hiddenSurfaceAppearances)
 
 	local head = character:FindFirstChild("Head") :: BasePart?
 	if head then
@@ -67,6 +68,10 @@ local function hideHeadAndAccessories(character: Model)
 			if child:IsA("Decal") and child.Name == "face" then
 				hiddenDecals[child] = child.Transparency
 				child.Transparency = 1.0
+			elseif child:IsA("SurfaceAppearance") then
+				-- Lepas SurfaceAppearance secara lokal agar interior kepala tidak menjadi hitam pekat di kamera
+				hiddenSurfaceAppearances[child] = head
+				child.Parent = nil
 			end
 		end
 	end
@@ -77,7 +82,6 @@ local function hideHeadAndAccessories(character: Model)
 			local handle = child:FindFirstChild("Handle") :: BasePart?
 			if handle then
 				local isHeadAccessory = false
-				-- Periksa apakah attachment aksesori berada di Head
 				for _, att in ipairs(handle:GetChildren()) do
 					if att:IsA("Attachment") then
 						local attName = att.Name
@@ -88,7 +92,6 @@ local function hideHeadAndAccessories(character: Model)
 					end
 				end
 
-				-- Periksa AccessoryType jika tersedia di API Roblox
 				local accType = (child :: any).AccessoryType
 				if accType == Enum.AccessoryType.Hat or accType == Enum.AccessoryType.Hair or accType == Enum.AccessoryType.Face or accType == Enum.AccessoryType.Eyebrow or accType == Enum.AccessoryType.Eyelash then
 					isHeadAccessory = true
@@ -101,12 +104,54 @@ local function hideHeadAndAccessories(character: Model)
 			end
 		end
 	end
+
+	-- Sembunyikan torso, paha, dan tungkai bawah lokal agar tidak ada gumpalan celana/baju di bawah meja
+	-- UpperArm disembunyikan agar sambungan bahu tidak menembus lensa
+	-- LowerArm dan Hand TETAP TERLIHAT (LocalTransparencyModifier = 0.0)
+	local partsToHide = {
+		"UpperTorso", "LowerTorso",
+		"LeftUpperArm", "RightUpperArm",
+		"LeftUpperLeg", "RightUpperLeg",
+		"LeftLowerLeg", "RightLowerLeg",
+		"LeftFoot", "RightFoot",
+	}
+	for _, partName in ipairs(partsToHide) do
+		local p = character:FindFirstChild(partName) :: BasePart?
+		if p then
+			hiddenParts[p] = p.LocalTransparencyModifier
+			p.LocalTransparencyModifier = 1.0
+		end
+	end
+
+	-- Pastikan lengan bawah dan tangan terlihat jelas dengan warna kulit / lengan avatar
+	local partsToShow = { "LeftLowerArm", "RightLowerArm", "LeftHand", "RightHand" }
+	for _, partName in ipairs(partsToShow) do
+		local p = character:FindFirstChild(partName) :: BasePart?
+		if p then
+			p.LocalTransparencyModifier = 0.0
+		end
+	end
+
+	-- Sembunyikan tekstur baju (Shirt) lokal saat duduk agar lengan dan tangan menampilkan warna kulit asli avatar
+	local shirt = character:FindFirstChildOfClass("Shirt")
+	if shirt then
+		hiddenShirt = shirt
+		shirt.Parent = nil
+	end
 end
 
 --[=[
-	Memulihkan visibilitas kepala dan aksesori ke kondisi normal saat berdiri.
+	Memulihkan visibilitas kepala, badan, dan aksesori ke kondisi normal saat berdiri.
 ]=]
 local function restoreHeadAndAccessories()
+	if hiddenShirt then
+		local char = localPlayer.Character
+		if char then
+			hiddenShirt.Parent = char
+		end
+		hiddenShirt = nil
+	end
+
 	for part, origTransp in pairs(hiddenParts) do
 		if part and part.Parent then
 			part.LocalTransparencyModifier = origTransp
@@ -120,57 +165,22 @@ local function restoreHeadAndAccessories()
 		end
 	end
 	table.clear(hiddenDecals)
-end
 
---[=[
-	Membuat atau memperbarui tombol UI "Berdiri" untuk kenyamanan mobile & PC.
-]=]
-local function createStandUI()
-	if standGui then
-		standGui.Enabled = true
-		return
+	for sa, parent in pairs(hiddenSurfaceAppearances) do
+		if sa and parent and parent.Parent then
+			sa.Parent = parent
+		end
 	end
+	table.clear(hiddenSurfaceAppearances)
 
-	local playerGui = localPlayer:WaitForChild("PlayerGui")
-	local sg = Instance.new("ScreenGui")
-	sg.Name = "PosRondaStandGui"
-	sg.ResetOnSpawn = false
-	sg.DisplayOrder = 10
-
-	local standButton = Instance.new("TextButton")
-	standButton.Name = "StandButton"
-	standButton.Size = UDim2.new(0, 120, 0, 48) -- Target sentuh minimal 48 px untuk mobile (UI_UX_SPEC §2)
-	standButton.Position = UDim2.new(1, -140, 1, -70)
-	standButton.BackgroundColor3 = Color3.fromRGB(45, 35, 28)
-	standButton.TextColor3 = Color3.fromRGB(240, 230, 210)
-	standButton.Font = Enum.Font.FredokaOne
-	standButton.TextSize = 18
-	standButton.Text = "Berdiri"
-	standButton.AutoButtonColor = true
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 12)
-	corner.Parent = standButton
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(180, 140, 80)
-	stroke.Thickness = 2
-	stroke.Parent = standButton
-
-	standButton.Activated:Connect(function()
-		Remotes.Client.RequestStand:FireServer()
-	end)
-
-	standButton.Parent = sg
-	sg.Parent = playerGui
-	standGui = sg
-end
-
-local function hideStandUI()
-	if standGui then
-		standGui.Enabled = false
+	for part, origTransp in pairs(hiddenOpponentParts) do
+		if part and part.Parent then
+			part.LocalTransparencyModifier = origTransp
+		end
 	end
+	table.clear(hiddenOpponentParts)
 end
+
 
 --[=[
 	Memicu getaran kamera (Screen Shake) saat hentakan kuat.
@@ -215,20 +225,114 @@ local function updateCameraFrame()
 	-- Posisi dasar mata dengan offset FeelConfig + efek CameraFX
 	local baseCF = anchorCF * CFrame.new(povOffset + fxPosOffset)
 
+	-- Hitung parallax halus berbasis posisi kursor di layar saat mouse bebas
+	local parallaxYaw = 0.0
+	local parallaxPitch = 0.0
+	if UserInputService.MouseEnabled and camera.ViewportSize.X > 0 and camera.ViewportSize.Y > 0 then
+		local mPos = UserInputService:GetMouseLocation()
+		local vp = camera.ViewportSize
+		local normX = math.clamp((mPos.X / vp.X) - 0.5, -0.5, 0.5)
+		local normY = math.clamp((mPos.Y / vp.Y) - 0.5, -0.5, 0.5)
+		parallaxYaw = -normX * 10.0
+		parallaxPitch = -normY * 6.0
+	end
+
 	-- Rotasi kamera dengan rotasi yaw (tengok), pitch (tunduk/dongak + napas/condong), dan roll (shake)
 	local totalPitch = math.clamp(
-		currentPitch + fxPitchDeg,
+		currentPitch + fxPitchDeg + parallaxPitch,
 		FeelConfig.CAMERA.PITCH_MIN_DEG - 4,
 		FeelConfig.CAMERA.PITCH_MAX_DEG + 4
 	)
-	local rotCF = CFrame.Angles(0, math.rad(currentYaw), 0)
+	local totalYaw = math.clamp(
+		currentYaw + parallaxYaw,
+		FeelConfig.CAMERA.YAW_MIN_DEG,
+		FeelConfig.CAMERA.YAW_MAX_DEG
+	)
+	local rotCF = CFrame.Angles(0, math.rad(totalYaw), 0)
 		* CFrame.Angles(math.rad(totalPitch), 0, math.rad(fxRollDeg))
 	camera.CFrame = baseCF * rotCF
 
-	-- Jaga agar kepala lokal tetap tidak terlihat jika terjadi reload animasi
+	-- Jaga agar part tubuh lokal yang tersembunyi tetap 1.0 (mencegah reset oleh animasi Roblox)
 	for part in pairs(hiddenParts) do
 		if part and part.Parent then
 			part.LocalTransparencyModifier = 1.0
+		end
+	end
+
+	-- Jaga agar Lengan Bawah dan Tangan lokal tetap 0.0 (selalu terlihat)
+	local localChar = localPlayer.Character
+	if localChar then
+		local lArm = localChar:FindFirstChild("LeftLowerArm") :: BasePart?
+		local rArm = localChar:FindFirstChild("RightLowerArm") :: BasePart?
+		local lHand = localChar:FindFirstChild("LeftHand") :: BasePart?
+		local rHand = localChar:FindFirstChild("RightHand") :: BasePart?
+		if lArm then lArm.LocalTransparencyModifier = 0.0 end
+		if rArm then rArm.LocalTransparencyModifier = 0.0 end
+		if lHand then lHand.LocalTransparencyModifier = 0.0 end
+		if rHand then rHand.LocalTransparencyModifier = 0.0 end
+	end
+
+	-- PERLINDUNGAN LAYAR DARI ANGGOTA TUBUH LAWAN TERLALU DEKAT (Ambang NEAR_OCCLUSION_THRESHOLD)
+	local nearThreshold = (FeelConfig.CAMERA and FeelConfig.CAMERA.NEAR_OCCLUSION_THRESHOLD) or 2.6
+	local camPos = camera.CFrame.Position
+	local currentNear: { [BasePart]: boolean } = {}
+
+	local posRonda = workspace:FindFirstChild("PosRonda")
+	if posRonda then
+		local function checkModelParts(model: Model)
+			if model ~= localPlayer.Character and (model:GetAttribute("IsBotRig") or model:FindFirstChildOfClass("Humanoid")) then
+				for _, part in ipairs(model:GetChildren()) do
+					if part:IsA("BasePart") then
+						local dist = (part.Position - camPos).Magnitude
+						if dist < nearThreshold then
+							currentNear[part] = true
+							if hiddenOpponentParts[part] == nil then
+								hiddenOpponentParts[part] = part.LocalTransparencyModifier
+							end
+							part.LocalTransparencyModifier = 1.0
+						end
+					end
+				end
+			end
+		end
+
+		for _, obj in ipairs(posRonda:GetChildren()) do
+			if obj:IsA("Model") then
+				checkModelParts(obj)
+				-- Cek juga bot rig atau model di dalam model Meja
+				for _, subObj in ipairs(obj:GetChildren()) do
+					if subObj:IsA("Model") then
+						checkModelParts(subObj)
+					end
+				end
+			end
+		end
+	end
+
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= localPlayer and p.Character then
+			for _, part in ipairs(p.Character:GetChildren()) do
+				if part:IsA("BasePart") then
+					local dist = (part.Position - camPos).Magnitude
+					if dist < nearThreshold then
+						currentNear[part] = true
+						if hiddenOpponentParts[part] == nil then
+							hiddenOpponentParts[part] = part.LocalTransparencyModifier
+						end
+						part.LocalTransparencyModifier = 1.0
+					end
+				end
+			end
+		end
+	end
+
+	-- Pulihkan bagian tubuh lawan yang sudah bergerak menjauh dari kamera
+	for part, origTransp in pairs(hiddenOpponentParts) do
+		if not currentNear[part] then
+			if part and part.Parent then
+				part.LocalTransparencyModifier = origTransp
+			end
+			hiddenOpponentParts[part] = nil
 		end
 	end
 end
@@ -269,7 +373,12 @@ function CameraController.StartFirstPerson(seatIndex: number, tableId: number?)
 	currentSeatIndex = seatIndex
 	currentAnchor = anchor
 	currentYaw = 0.0
-	currentPitch = -25.0 -- Menunduk melihat kartu di rak dan meja
+	currentPitch = (FeelConfig.CAMERA and FeelConfig.CAMERA.DEFAULT_PITCH_DEG) or -36.0 -- Sudut nyaman Varian B melihat meja dan rak kartu domino secara penuh
+
+	-- Matikan ProximityPrompt agar tidak ada tombol prompt "Duduk" yang menutupi layar saat duduk
+	pcall(function()
+		game:GetService("ProximityPromptService").Enabled = false
+	end)
 
 	-- Sembunyikan kepala karakter lokal
 	local char = localPlayer.Character
@@ -281,26 +390,46 @@ function CameraController.StartFirstPerson(seatIndex: number, tableId: number?)
 	camera.CameraType = Enum.CameraType.Scriptable
 	camera.FieldOfView = FeelConfig.CAMERA.DEFAULT_FOV
 
-	-- Kunci mouse kursor untuk pengalaman PC first-person
+	-- Kursor mouse dibiarkan bebas agar pemain dapat mengklik kartu di meja & rak (tidak terkunci seperti shiftlock)
 	if UserInputService.MouseEnabled then
-		UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
 
 	-- Bind loop render kamera
 	RunService:BindToRenderStep("PosRondaFirstPersonCamera", Enum.RenderPriority.Camera.Value, updateCameraFrame)
 
-	-- Tangani input mouse PC
+	-- Deteksi tombol kanan mouse (RMB) untuk rotasi bebas kamera saat ditahan
+	local isRightMouseDown = false
+	connections["InputBeganRMB"] = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if not isSeated then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			isRightMouseDown = true
+			UserInputService.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+		end
+	end)
+
+	connections["InputEndedRMB"] = UserInputService.InputEnded:Connect(function(input, gameProcessed)
+		if not isSeated then return end
+		if input.UserInputType == Enum.UserInputType.MouseButton2 then
+			isRightMouseDown = false
+			UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+		end
+	end)
+
+	-- Tangani rotasi mouse saat RMB ditahan (pan pandangan meja & lawan)
 	connections["InputChanged"] = UserInputService.InputChanged:Connect(function(input, gameProcessed)
 		if not isSeated then return end
 		if input.UserInputType == Enum.UserInputType.MouseMovement then
-			local delta = input.Delta
-			local sens = FeelConfig.CAMERA.MOUSE_SENSITIVITY * (FeelConfig.USER_SETTINGS.SENSITIVITY or 1.0)
-			currentYaw -= delta.X * sens
-			currentPitch -= delta.Y * sens
+			if isRightMouseDown then
+				local delta = input.Delta
+				local sens = FeelConfig.CAMERA.MOUSE_SENSITIVITY * (FeelConfig.USER_SETTINGS.SENSITIVITY or 1.0)
+				currentYaw -= delta.X * sens
+				currentPitch -= delta.Y * sens
 
-			-- Terapkan batas pandang yaw & pitch dari FeelConfig
-			currentYaw = math.clamp(currentYaw, FeelConfig.CAMERA.YAW_MIN_DEG, FeelConfig.CAMERA.YAW_MAX_DEG)
-			currentPitch = math.clamp(currentPitch, FeelConfig.CAMERA.PITCH_MIN_DEG, FeelConfig.CAMERA.PITCH_MAX_DEG)
+				-- Terapkan batas pandang yaw & pitch dari FeelConfig
+				currentYaw = math.clamp(currentYaw, FeelConfig.CAMERA.YAW_MIN_DEG, FeelConfig.CAMERA.YAW_MAX_DEG)
+				currentPitch = math.clamp(currentPitch, FeelConfig.CAMERA.PITCH_MIN_DEG, FeelConfig.CAMERA.PITCH_MAX_DEG)
+			end
 		end
 	end)
 
@@ -318,15 +447,16 @@ function CameraController.StartFirstPerson(seatIndex: number, tableId: number?)
 
 	-- Inisialisasi HandController dan mulai pose Idle bernapas
 	local okHand, handCtrl = pcall(function()
-		return HandController.new(seatIndex, character)
+		local targetChar = localPlayer.Character or char
+		if not targetChar then
+			return nil
+		end
+		return HandController.new(seatIndex, targetChar)
 	end)
 	if okHand and handCtrl then
 		handCtrl:Idle()
 		currentHandCtrl = handCtrl
 	end
-
-	-- Tampilkan tombol UI Berdiri
-	createStandUI()
 end
 
 --[=[
@@ -374,8 +504,10 @@ function CameraController.StopFirstPerson()
 	camera.CameraType = Enum.CameraType.Custom
 	camera.FieldOfView = 70
 
-	-- Sembunyikan UI tombol Berdiri
-	hideStandUI()
+	-- Pulihkan kembali ProximityPrompt saat berdiri
+	pcall(function()
+		game:GetService("ProximityPromptService").Enabled = true
+	end)
 end
 
 --[=[
@@ -401,11 +533,33 @@ end
 
 -- Inisialisasi awal CameraController di client
 function CameraController.Init()
-	-- Dengarkan event SeatChanged dari server
+	local function bindHumanoid(char: Model)
+		local hum = char:WaitForChild("Humanoid", 5) :: Humanoid?
+		if hum then
+			hum.Seated:Connect(function(active, seatPart)
+				if active and seatPart and seatPart:IsA("Seat") then
+					local sIdx = seatPart:GetAttribute("SeatIndex") or tonumber(string.match(seatPart.Name, "%d+")) or 1
+					local tIdx = seatPart:GetAttribute("TableId") or 1
+					CameraController.StartFirstPerson(sIdx, tIdx)
+				elseif not active then
+					CameraController.StopFirstPerson()
+				end
+			end)
+		end
+	end
+
+	if localPlayer.Character then
+		bindHumanoid(localPlayer.Character)
+	end
+	localPlayer.CharacterAdded:Connect(bindHumanoid)
+
+	-- Dengarkan event SeatChanged dari server sebagai jalur utama
 	Remotes.getEvent("SeatChanged").OnClientEvent:Connect(function(seatIndex: number, userId: number, username: string, isBot: boolean, action: string, tableId: number?)
 		if userId == localPlayer.UserId then
 			if action == "sit" then
-				CameraController.StartFirstPerson(seatIndex, tableId)
+				task.defer(function()
+					CameraController.StartFirstPerson(seatIndex, tableId)
+				end)
 			elseif action == "stand" then
 				CameraController.StopFirstPerson()
 			end
