@@ -18,6 +18,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local sharedFolder = ReplicatedStorage:WaitForChild("Shared")
 local FeelConfig = require(sharedFolder:WaitForChild("FeelConfig"))
+local TablePropsHelper = require(sharedFolder:WaitForChild("TablePropsHelper"))
 
 export type HandSide = "L" | "R"
 
@@ -82,6 +83,73 @@ local function createInvisibleTarget(name: string, parent: Instance): BasePart
 	return p
 end
 
+-- Helper memasang jari-jari Part prosedural pada telapak tangan
+local function attachProceduralFingers(handPart: BasePart, isLeft: boolean, armScale: number)
+	local existing = handPart:FindFirstChild("ProceduralFingers")
+	if existing then
+		existing:Destroy()
+	end
+
+	local model = Instance.new("Model")
+	model.Name = "ProceduralFingers"
+
+	local skinColor = handPart.Color
+	local mult = if isLeft then 1 else -1
+
+	-- Ibu jari (Thumb)
+	local thumb = Instance.new("Part")
+	thumb.Name = "Thumb"
+	thumb.Size = Vector3.new(0.22 * armScale, 0.20 * armScale, 0.38 * armScale)
+	thumb.Color = skinColor
+	thumb.Material = Enum.Material.SmoothPlastic
+	thumb.CanCollide = false
+	thumb.CastShadow = false
+	thumb.CFrame = handPart.CFrame * CFrame.new(-0.35 * mult * armScale, -0.05 * armScale, -0.35 * armScale)
+		* CFrame.Angles(math.rad(-15), math.rad(25 * mult), math.rad(-10 * mult))
+	thumb.Parent = model
+
+	local wThumb = Instance.new("WeldConstraint")
+	wThumb.Part0 = handPart
+	wThumb.Part1 = thumb
+	wThumb.Parent = thumb
+
+	-- 4 Jari telapak (telunjuk, tengah, manis, kelingking)
+	local fingerOffsets = { -0.25, -0.08, 0.09, 0.26 }
+	local fingerLengths = { 0.38, 0.42, 0.40, 0.32 }
+	for i = 1, 4 do
+		local f = Instance.new("Part")
+		f.Name = "Finger" .. i
+		f.Size = Vector3.new(0.15 * armScale, 0.17 * armScale, fingerLengths[i] * armScale)
+		f.Color = skinColor
+		f.Material = Enum.Material.SmoothPlastic
+		f.CanCollide = false
+		f.CastShadow = false
+		local xOff = fingerOffsets[i] * mult * armScale
+		f.CFrame = handPart.CFrame * CFrame.new(xOff, -0.05 * armScale, -0.48 * armScale)
+			* CFrame.Angles(math.rad(-15), 0, 0)
+		f.Parent = model
+
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = handPart
+		w.Part1 = f
+		w.Parent = f
+	end
+
+	model.Parent = handPart
+end
+
+-- Helper menerapkan skala visual pada lengan/tangan lokal tanpa merusak joint Motor6D
+local function applyScaleMesh(part: BasePart, scale: number)
+	local mesh = part:FindFirstChild("VisualScaleMesh") :: SpecialMesh?
+	if not mesh then
+		mesh = Instance.new("SpecialMesh")
+		mesh.Name = "VisualScaleMesh"
+		mesh.MeshType = Enum.MeshType.Brick
+		mesh.Parent = part
+	end
+	mesh.Scale = Vector3.new(scale, scale, scale)
+end
+
 --[=[
 	Membuat instans baru HandController untuk kursi dan karakter tertentu.
 ]=]
@@ -110,16 +178,57 @@ function HandController.new(seatIndex: number, character: Model): HandController
 
 	-- Ambil bagian lengan R15
 	local leftUpperArm = character:FindFirstChild("LeftUpperArm") :: BasePart?
+	local leftLowerArm = character:FindFirstChild("LeftLowerArm") :: BasePart?
 	local leftHand = character:FindFirstChild("LeftHand") :: BasePart?
 	local rightUpperArm = character:FindFirstChild("RightUpperArm") :: BasePart?
+	local rightLowerArm = character:FindFirstChild("RightLowerArm") :: BasePart?
 	local rightHand = character:FindFirstChild("RightHand") :: BasePart?
 
-	-- Inisialisasi posisi istirahat (Rest Position) di atas paha / tepi meja
-	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local baseCFrame = if hrp then hrp.CFrame else CFrame.new()
+	-- Terapkan skala visual dan jari-jari natural khusus kursi pemain lokal (POV)
+	local isLocalSeat = (seatIndex == 1)
+	if isLocalSeat then
+		local armScale = (FeelConfig.HANDS and FeelConfig.HANDS.VISUAL_ARM_SCALE) or 0.85
+		if leftLowerArm then applyScaleMesh(leftLowerArm, armScale) end
+		if rightLowerArm then applyScaleMesh(rightLowerArm, armScale) end
+		if leftHand then
+			applyScaleMesh(leftHand, armScale)
+			attachProceduralFingers(leftHand, true, armScale)
+		end
+		if rightHand then
+			applyScaleMesh(rightHand, armScale)
+			attachProceduralFingers(rightHand, false, armScale)
+		end
+	end
 
-	self.leftRestPos = (baseCFrame * CFrame.new(-0.8, -0.2, -1.2)).Position
-	self.rightRestPos = (baseCFrame * CFrame.new(0.8, -0.2, -1.2)).Position
+	-- Inisialisasi posisi istirahat (Rest Position):
+	-- Kursi lokal: X lebar (1.65) agar tidak menutupi 7 kartu rak pemain, Z=-0.85 di tepi meja
+	-- Kursi lawan: X=0.85, Z=-0.72 di tepi meja samping rak masing-masing (tidak menjulur ke tengah meja)
+	local hrp = character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local seatPart = humanoid.SeatPart
+	local restCF: CFrame
+	local restZ = if isLocalSeat
+		then ((FeelConfig.HANDS and FeelConfig.HANDS.REST_OFFSET_Z) or -0.85)
+		else ((FeelConfig.HANDS and FeelConfig.HANDS.OPPONENT_REST_OFFSET_Z) or -0.72)
+	local restX = if isLocalSeat
+		then ((FeelConfig.HANDS and FeelConfig.HANDS.REST_OFFSET_X) or 1.65)
+		else ((FeelConfig.HANDS and FeelConfig.HANDS.OPPONENT_REST_OFFSET_X) or 0.85)
+
+	if seatPart and seatPart:IsA("Seat") then
+		restCF = seatPart.CFrame * CFrame.new(0, 1.05, restZ)
+	elseif hrp then
+		restCF = hrp.CFrame * CFrame.new(0, -0.55, restZ)
+	else
+		restCF = CFrame.new()
+	end
+	local baseCFrame = restCF
+
+	self.leftRestCF = restCF * CFrame.new(-restX, 0.02, 0)
+		* CFrame.Angles(math.rad(-8), math.rad(15), math.rad(-5))
+	self.rightRestCF = restCF * CFrame.new(restX, 0.02, 0)
+		* CFrame.Angles(math.rad(-8), math.rad(-15), math.rad(5))
+
+	self.leftRestPos = self.leftRestCF.Position
+	self.rightRestPos = self.rightRestCF.Position
 
 	-- Simpan Neck Motor6D & buat IKControl LookAt kepala untuk reaksi menoleh saat giliran lama (Grup C)
 	local head = character:FindFirstChild("Head") :: BasePart?
@@ -145,19 +254,19 @@ function HandController.new(seatIndex: number, character: Model): HandController
 		self.headLookIK = headIK
 	end
 
-	-- Buat target & pole parts untuk tangan kiri
+	-- Buat target & pole parts untuk tangan kiri (Transform IK agar posisi & rotasi telapak natural)
 	if leftUpperArm and leftHand then
 		local lTarget = createInvisibleTarget(string.format("LeftTarget_Seat%d", seatIndex), targetFolder)
-		lTarget.CFrame = CFrame.new(self.leftRestPos)
+		lTarget.CFrame = self.leftRestCF
 		self.leftTarget = lTarget
 
 		local lPole = createInvisibleTarget(string.format("LeftPole_Seat%d", seatIndex), targetFolder)
-		lPole.CFrame = baseCFrame * CFrame.new(-1.8, 0.8, -0.6)
+		lPole.CFrame = restCF * CFrame.new(-1.6, -0.3, 0.6)
 		self.leftPole = lPole
 
 		local leftIK = Instance.new("IKControl")
 		leftIK.Name = string.format("LeftArmIK_Seat%d", seatIndex)
-		leftIK.Type = Enum.IKControlType.Position
+		leftIK.Type = Enum.IKControlType.Transform
 		leftIK.ChainRoot = leftUpperArm
 		leftIK.EndEffector = leftHand
 		leftIK.Target = lTarget
@@ -168,19 +277,19 @@ function HandController.new(seatIndex: number, character: Model): HandController
 		self.leftIK = leftIK
 	end
 
-	-- Buat target & pole parts untuk tangan kanan
+	-- Buat target & pole parts untuk tangan kanan (Transform IK agar posisi & rotasi telapak natural)
 	if rightUpperArm and rightHand then
 		local rTarget = createInvisibleTarget(string.format("RightTarget_Seat%d", seatIndex), targetFolder)
-		rTarget.CFrame = CFrame.new(self.rightRestPos)
+		rTarget.CFrame = self.rightRestCF
 		self.rightTarget = rTarget
 
 		local rPole = createInvisibleTarget(string.format("RightPole_Seat%d", seatIndex), targetFolder)
-		rPole.CFrame = baseCFrame * CFrame.new(1.8, 0.8, -0.6)
+		rPole.CFrame = restCF * CFrame.new(1.6, -0.3, 0.6)
 		self.rightPole = rPole
 
 		local rightIK = Instance.new("IKControl")
 		rightIK.Name = string.format("RightArmIK_Seat%d", seatIndex)
-		rightIK.Type = Enum.IKControlType.Position
+		rightIK.Type = Enum.IKControlType.Transform
 		rightIK.ChainRoot = rightUpperArm
 		rightIK.EndEffector = rightHand
 		rightIK.Target = rTarget
@@ -192,6 +301,20 @@ function HandController.new(seatIndex: number, character: Model): HandController
 	end
 
 	return self
+end
+
+-- Helper pembatas target tangan agar tidak memotong bidang dekat kamera (Point 2)
+local function clampTargetSafety(worldPos: Vector3): Vector3
+	local cam = workspace.CurrentCamera
+	if not cam then return worldPos end
+	local camCF = cam.CFrame
+	local rel = camCF:PointToObjectSpace(worldPos)
+	local minDist = -((FeelConfig.HANDS and FeelConfig.HANDS.MIN_HAND_DISTANCE_TO_CAM) or 0.90)
+	if rel.Z > minDist then
+		rel = Vector3.new(rel.X, rel.Y, minDist)
+		return camCF:PointToWorldSpace(rel)
+	end
+	return worldPos
 end
 
 --[=[
@@ -207,21 +330,21 @@ function HandController:Idle()
 	end
 
 	local startTime = os.clock()
-	local lBase = self.leftRestPos
-	local rBase = self.rightRestPos
+	local lCF = self.leftRestCF or CFrame.new(self.leftRestPos)
+	local rCF = self.rightRestCF or CFrame.new(self.rightRestPos)
 
-	-- Loop pergerakan napas halus (amplitudo 0.02 stud, periode ~3.2 detik)
+	-- Loop pergerakan napas halus (amplitudo 0.015 stud, periode ~3.2 detik)
 	self.idleConnection = RunService.Heartbeat:Connect(function()
 		if self.isDestroyed then return end
 		local elapsed = os.clock() - startTime
-		local breathOffsetY = math.sin(elapsed * 1.95) * 0.02
-		local subtleZ = math.cos(elapsed * 1.3) * 0.015
+		local breathOffsetY = math.sin(elapsed * 1.95) * 0.015
+		local subtleZ = math.cos(elapsed * 1.3) * 0.010
 
 		if self.leftTarget then
-			self.leftTarget.CFrame = CFrame.new(lBase + Vector3.new(0, breathOffsetY, subtleZ))
+			self.leftTarget.CFrame = lCF * CFrame.new(0, breathOffsetY, subtleZ)
 		end
 		if self.rightTarget then
-			self.rightTarget.CFrame = CFrame.new(rBase + Vector3.new(0, breathOffsetY, -subtleZ))
+			self.rightTarget.CFrame = rCF * CFrame.new(0, breathOffsetY, -subtleZ)
 		end
 	end)
 end
@@ -232,6 +355,9 @@ end
 ]=]
 function HandController:ReachTo(worldPos: Vector3, hand: HandSide?, duration: number?, anticipation: boolean?)
 	if self.isDestroyed then return end
+
+	-- Lindungi layar: batasi target agar tidak melewati kamera
+	worldPos = clampTargetSafety(worldPos)
 
 	-- Nonaktifkan idle agar target tidak ditimpa
 	if self.idleConnection then
@@ -638,8 +764,7 @@ function HandController:PlayIdleAction(actionName: string)
 	task.spawn(function()
 		if actionName == "sip_coffee" and rTarget then
 			local dur = charFeel.SIP_COFFEE_DURATION
-			local posRonda = workspace:FindFirstChild("PosRonda")
-			local coffeeCup = posRonda and posRonda:FindFirstChild("GelasKopi", true) :: BasePart?
+			local coffeeCup = TablePropsHelper.GetCoffeeCup(self.tableId)
 
 			local cupOrigCF = if coffeeCup then coffeeCup.CFrame else CFrame.new(rBase + Vector3.new(0.3, 0.1, -0.3))
 			local mouthPos = if head
@@ -774,21 +899,59 @@ end
 function HandController:Place(tileInstance: Instance?, targetCFrame: CFrame, isSlam: boolean?)
 	if self.isDestroyed then return end
 
+	local maxReach = FeelConfig.HANDS.MAX_REACH_DISTANCE or 1.80
+	local rUpper = self.character:FindFirstChild("RightUpperArm") :: BasePart?
+	local shoulderPos = if rUpper then rUpper.Position else self.rightRestPos
+	local toTarget = targetCFrame.Position - shoulderPos
+	local dist = toTarget.Magnitude
+
+	local reachCFrame: CFrame
+	local needsSlide = dist > maxReach
+
+	if needsSlide then
+		local dir = toTarget.Unit
+		local reachPos = shoulderPos + dir * maxReach
+		reachPos = Vector3.new(reachPos.X, targetCFrame.Position.Y + (FeelConfig.HANDS.DESK_SURFACE_Y_OFFSET or 0.05), reachPos.Z)
+		reachPos = clampTargetSafety(reachPos)
+		reachCFrame = CFrame.new(reachPos) * (targetCFrame - targetCFrame.Position)
+	else
+		local safeTargetPos = clampTargetSafety(targetCFrame.Position)
+		reachCFrame = CFrame.new(safeTargetPos) * (targetCFrame - targetCFrame.Position)
+	end
+
 	if isSlam then
-		self:Slam(tileInstance, targetCFrame, "MEDIUM")
+		self:Slam(tileInstance, reachCFrame, "MEDIUM")
 	else
 		local targetPart = self.rightTarget
-		if not targetPart then return end
+		if targetPart then
+			local placeTween = TweenService:Create(
+				targetPart,
+				TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+				{ CFrame = reachCFrame }
+			)
+			placeTween:Play()
 
-		local placeTween = TweenService:Create(
-			targetPart,
-			TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ CFrame = targetCFrame }
-		)
-		placeTween:Play()
+			task.delay(0.25, function()
+				if not self.isDestroyed then
+					self:Idle()
+				end
+			end)
+		end
+	end
 
-		task.delay(0.25, function()
-			self:Idle()
+	-- Jika target jauh: kartu dilepas di meja lalu meluncur (smooth slide/toss) ke targetCFrame akhir
+	if needsSlide and tileInstance and tileInstance:IsA("BasePart") then
+		local impactDelay = if isSlam then (0.14 + (FeelConfig.SLAM_PRESETS.MEDIUM.PREPARE_PAUSE or 0.08) + FeelConfig.SLAM_PRESETS.MEDIUM.SWING_TIME) else 0.20
+		task.delay(impactDelay, function()
+			if tileInstance and tileInstance.Parent then
+				local slideTime = FeelConfig.HANDS.SLIDE_DURATION or 0.22
+				local slideTween = TweenService:Create(
+					tileInstance,
+					TweenInfo.new(slideTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+					{ CFrame = targetCFrame }
+				)
+				slideTween:Play()
+			end
 		end)
 	end
 end
