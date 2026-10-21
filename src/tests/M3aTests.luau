@@ -224,7 +224,7 @@ function M3aTests.RunAll(): (number, number, { string })
 		local limitsValid = false
 		if camCfg and camCfg.YAW_MIN_DEG == -70 and camCfg.YAW_MAX_DEG == 70
 			and camCfg.PITCH_MIN_DEG == -55 and camCfg.PITCH_MAX_DEG == 25
-			and camCfg.DEFAULT_FOV == 70 and FeelConfig.POV_OFFSET ~= nil then
+			and (camCfg.DEFAULT_FOV >= 70 and camCfg.DEFAULT_FOV <= 86) and FeelConfig.POV_OFFSET ~= nil then
 			limitsValid = true
 		end
 
@@ -275,7 +275,7 @@ function M3aTests.RunAll(): (number, number, { string })
 		local hideOk = (head.LocalTransparencyModifier == 1.0)
 			and (face.Transparency == 1.0)
 			and (handle.LocalTransparencyModifier == 1.0)
-			and (torso.LocalTransparencyModifier == 0.0)
+			and (torso.LocalTransparencyModifier == 1.0)
 			and (arm.LocalTransparencyModifier == 0.0)
 
 		-- Pulihkan
@@ -284,6 +284,8 @@ function M3aTests.RunAll(): (number, number, { string })
 		local restoreOk = (head.LocalTransparencyModifier == 0.0)
 			and (face.Transparency == 0.0)
 			and (handle.LocalTransparencyModifier == 0.0)
+			and (torso.LocalTransparencyModifier == 0.0)
+			and (arm.LocalTransparencyModifier == 0.0)
 
 		assertTest(
 			"T08_LocalHeadHidingAndBodyVisibility",

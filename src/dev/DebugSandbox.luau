@@ -221,8 +221,8 @@ function DebugSandbox.RunMemoryLeakTest(rounds: number?): {
 
 	local finalInstances = #workspace:GetDescendants()
 	-- Toleransi part pool yang disimpan di pool (maksimum 28 kartu * part properties)
-	local diff = math.abs(finalInstances - initialInstances)
-	local leaked = diff > 40 -- Toleransi pool kartu yang di-cache di TilePoolCache
+	local netGain = finalInstances - initialInstances
+	local leaked = netGain > 40 -- Toleransi pool kartu yang di-cache di TilePoolCache
 
 	return {
 		initialInstances = initialInstances,

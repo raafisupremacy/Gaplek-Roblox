@@ -143,6 +143,7 @@ function M6Tests.RunAll(): (number, number, { string })
 	-- U03: SettingsService Fallback & Sanitasi Data (UI_UX_SPEC.md §4)
 	-- ====================================================================
 	do
+		SettingsService.ResetForTesting()
 		local defaults = SettingsService.GetDefaultSettings()
 		local hasAllKeys = (defaults.masterVolume ~= nil)
 			and (defaults.sfxVolume ~= nil)

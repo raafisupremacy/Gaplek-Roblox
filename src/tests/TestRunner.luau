@@ -125,6 +125,17 @@ function TestRunner.runMultiTable(): { [string]: any }
 	return { passedCount = passed, failedCount = failed, logs = logs }
 end
 
+function TestRunner.runLifecycleTests(): { [string]: any }
+	print("[TestRunner] Menjalankan GameService Lifecycle & Blocker Runtime Tests (Batch 1)...")
+	local cloned = testsFolder:WaitForChild("GameServiceLifecycleTests"):Clone()
+	cloned.Parent = testsFolder
+	local LifecycleTests = require(cloned)
+	local ok, passed, failed, logs = LifecycleTests.RunAll()
+	cloned:Destroy()
+	print(string.format("[TestRunner] Lifecycle Tests Selesai: %d lulus, %d gagal", passed, failed))
+	return { passedCount = passed, failedCount = failed, logs = logs }
+end
+
 function TestRunner.runAll(simRounds: number?): { [string]: any }
 	local roundsCount = simRounds or 1000
 	print("==================================================")
@@ -143,6 +154,7 @@ function TestRunner.runAll(simRounds: number?): { [string]: any }
 	local m6 = TestRunner.runM6()
 	local m7 = TestRunner.runM7()
 	local multiTable = TestRunner.runMultiTable()
+	local lifecycle = TestRunner.runLifecycleTests()
 
 	-- Jalankan simulasi sesuai parameter (default cepat 1.000, penuh 10.000)
 	local sim2v2 = TestRunner.runSimulation("2v2", roundsCount, 112233)
@@ -162,6 +174,7 @@ function TestRunner.runAll(simRounds: number?): { [string]: any }
 		m6 = m6,
 		m7 = m7,
 		multiTable = multiTable,
+		lifecycle = lifecycle,
 		sim2v2 = sim2v2,
 		simSolo = simSolo,
 	}
