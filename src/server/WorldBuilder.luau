@@ -68,28 +68,19 @@ function WorldBuilder.SetupLighting()
 		end
 	end
 
-	local atmosphere = Instance.new("Atmosphere")
-	atmosphere.Name = "PosRondaAtmosphere"
-	atmosphere.Density = 0.35
-	atmosphere.Offset = 0.1
-	atmosphere.Color = Color3.fromRGB(30, 38, 55)
-	atmosphere.Decay = Color3.fromRGB(20, 25, 40)
-	atmosphere.Glare = 0.05
-	atmosphere.Haze = 1.2
-	atmosphere.Parent = Lighting
-
+	-- Tanpa Atmosphere buatan agar viewport malam tidak terhalang kabut hitam tebal (Haze/Density)
 	local colorCorrection = Instance.new("ColorCorrectionEffect")
 	colorCorrection.Name = "PosRondaColorCorrection"
-	colorCorrection.TintColor = Color3.fromRGB(255, 246, 235)
-	colorCorrection.Saturation = 0.08
+	colorCorrection.TintColor = Color3.fromRGB(250, 246, 240)
+	colorCorrection.Saturation = 0.05
 	colorCorrection.Contrast = 0.05
 	colorCorrection.Parent = Lighting
 
 	local bloom = Instance.new("BloomEffect")
 	bloom.Name = "PosRondaBloom"
-	bloom.Intensity = 0.35
-	bloom.Size = 18
-	bloom.Threshold = 1.1
+	bloom.Intensity = 0.04
+	bloom.Size = 10
+	bloom.Threshold = 2.0
 	bloom.Parent = Lighting
 end
 
@@ -133,6 +124,37 @@ local function createKursiBakso(
 		Color = COLOR_TOP_WOVEN,
 		Size = Vector3.new(1.10, 0.03, 1.10),
 		CFrame = seatCF * CFrame.new(0, 0.095, 0),
+		CanCollide = false,
+		Parent = tableModel,
+	})
+
+	-- Lubang pegangan tangan tengah khas kursi bakso plastik (Lion Star)
+	createPart({
+		Name = "SeatCenterHole",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_DARK,
+		Size = Vector3.new(0.32, 0.04, 0.16),
+		CFrame = seatCF * CFrame.new(0, 0.098, 0),
+		CanCollide = false,
+		Parent = tableModel,
+	})
+
+	-- Rusuk penguat silang cetakan bawah kursi (Underside Cross-Ribs)
+	createPart({
+		Name = "SeatUnderRibX",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_RIM,
+		Size = Vector3.new(1.18, 0.08, 0.06),
+		CFrame = seatCF * CFrame.new(0, -0.12, 0),
+		CanCollide = false,
+		Parent = tableModel,
+	})
+	createPart({
+		Name = "SeatUnderRibZ",
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLOR_RIM,
+		Size = Vector3.new(0.06, 0.08, 1.18),
+		CFrame = seatCF * CFrame.new(0, -0.12, 0),
 		CanCollide = false,
 		Parent = tableModel,
 	})
@@ -304,19 +326,21 @@ local function createKursiBakso(
 	})
 
 	-- 7. ATTACHMENT ANCHOR POV FIRST-PERSON & GAMEPLAY
+	-- Posisi mata avatar R15 seated (Varian B resmi): 3.55 stud di atas dudukan kursi, -0.15 stud ke depan
 	local camAnchor = Instance.new("Attachment")
 	camAnchor.Name = "CameraAnchor"
-	camAnchor.CFrame = CFrame.new(0, 1.85, 0)
+	camAnchor.CFrame = CFrame.new(0, 3.55, -0.15)
 	camAnchor.Parent = seatPart
 
+	-- Rak kartu domino di permukaan meja depan pemain (-1.35 stud dari kursi, berada di atas taplak felt)
 	local rackAnchor = Instance.new("Attachment")
 	rackAnchor.Name = "RackAnchor"
-	rackAnchor.CFrame = CFrame.new(0, 1.45, -0.60)
+	rackAnchor.CFrame = CFrame.new(0, 1.06, -1.35)
 	rackAnchor.Parent = seatPart
 
 	local handRestAnchor = Instance.new("Attachment")
 	handRestAnchor.Name = "HandRestAnchor"
-	handRestAnchor.CFrame = CFrame.new(0, 1.35, -0.35)
+	handRestAnchor.CFrame = CFrame.new(0, 1.05, -1.35)
 	handRestAnchor.Parent = seatPart
 
 	seatPart.Parent = tableModel
@@ -343,7 +367,7 @@ local function createGaplekTable(
 	local tableSize = BoardLayout.GetTableSize()
 	local tableSpan = tableSize.X
 	local tableHalf = tableSpan / 2
-	local seatHeight = floorY + 1.25
+	local seatHeight = floorY + 1.65
 	local tableSurfaceY = floorY + 2.70
 	local tableThickness = tableSize.Y
 	local tableTopCenterY = tableSurfaceY - tableThickness / 2
@@ -395,6 +419,62 @@ local function createGaplekTable(
 		CFrame = CFrame.new(centerPos.X + trimOffset, tableTopCenterY, centerPos.Z),
 		Parent = tableModel,
 	})
+
+	-- Taplak Felt Kain Hijau Tua di atas meja (Meningkatkan kontras kartu gaplek gading & estetika warung ronda)
+	local feltSpan = 5.20
+	createPart({
+		Name = "TableFeltMat",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(34, 76, 44), -- Hijau beludru gaplek
+		Size = Vector3.new(feltSpan, 0.02, feltSpan),
+		CFrame = CFrame.new(centerPos.X, tableSurfaceY + 0.01, centerPos.Z),
+		CanCollide = false,
+		Parent = tableModel,
+	})
+
+	-- Lis kayu pembatas taplak felt di atas permukaan meja
+	local lipSpan = feltSpan + 0.10
+	local lipThick = 0.08
+	local lipHeight = 0.03
+	local lipDist = feltSpan / 2 + lipThick / 2
+	local lipConfigs = {
+		{ name = "FeltLipF", size = Vector3.new(lipSpan, lipHeight, lipThick), pos = Vector3.new(0, 0.015, lipDist) },
+		{ name = "FeltLipB", size = Vector3.new(lipSpan, lipHeight, lipThick), pos = Vector3.new(0, 0.015, -lipDist) },
+		{ name = "FeltLipL", size = Vector3.new(lipThick, lipHeight, feltSpan), pos = Vector3.new(-lipDist, 0.015, 0) },
+		{ name = "FeltLipR", size = Vector3.new(lipThick, lipHeight, feltSpan), pos = Vector3.new(lipDist, 0.015, 0) },
+	}
+	for _, l in ipairs(lipConfigs) do
+		createPart({
+			Name = l.name,
+			Material = Enum.Material.Wood,
+			Color = Color3.fromRGB(75, 48, 28),
+			Size = l.size,
+			CFrame = CFrame.new(centerPos.X + l.pos.X, tableSurfaceY + l.pos.Y, centerPos.Z + l.pos.Z),
+			CanCollide = false,
+			Parent = tableModel,
+		})
+	end
+
+	-- Siku penguat kuningan / besi jadul di 4 sudut meja (Vintage Brass Table Brackets)
+	local bracketOffset = tableHalf - 0.15
+	local bracketY = tableTopCenterY + 0.16
+	local cornerBrackets = {
+		{ name = "CornerBracketFL", pos = Vector3.new(-bracketOffset, bracketY, bracketOffset) },
+		{ name = "CornerBracketFR", pos = Vector3.new(bracketOffset, bracketY, bracketOffset) },
+		{ name = "CornerBracketBL", pos = Vector3.new(-bracketOffset, bracketY, -bracketOffset) },
+		{ name = "CornerBracketBR", pos = Vector3.new(bracketOffset, bracketY, -bracketOffset) },
+	}
+	for _, cb in ipairs(cornerBrackets) do
+		createPart({
+			Name = cb.name,
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(180, 145, 60), -- Kuningan antik
+			Size = Vector3.new(0.35, 0.04, 0.35),
+			CFrame = CFrame.new(centerPos.X + cb.pos.X, cb.pos.Y, centerPos.Z + cb.pos.Z),
+			CanCollide = false,
+			Parent = tableModel,
+		})
+	end
 
 	-- 2. 4 Kaki meja kayu kokoh
 	local legHeight = tableTopCenterY - floorY
@@ -455,7 +535,7 @@ local function createGaplekTable(
 	shuffleZoneAtt.Position = Vector3.new(0, 0.05, 0)
 	shuffleZoneAtt.Parent = boardCenter
 
-	-- 4. 4 Kursi Bakso Plastik Hijau (Jarak SEAT_DISTANCE = 3.55 stud dari pusat meja menghadap ke tengah)
+	-- 4. 4 Kursi Bakso Plastik Hijau (Jarak SEAT_DISTANCE = 3.45 stud dari pusat meja menghadap ke tengah - Varian B)
 	local seatDist = BoardLayout.GetSeatDistance()
 	local seatConfigs = {
 		{ id = 1, pos = centerPos + Vector3.new(0, seatHeight, seatDist) },
@@ -467,6 +547,139 @@ local function createGaplekTable(
 	for _, sCfg in ipairs(seatConfigs) do
 		createKursiBakso(tableModel, sCfg.id, sCfg.pos, centerPos, floorY, tableId)
 	end
+
+	-- 5. Tabletop Props (Gelas Kopi, Termos, Piring Seng) di sudut meja luar zona kartu & rak
+	local propsFolder = Instance.new("Folder")
+	propsFolder.Name = "Props"
+	propsFolder.Parent = tableModel
+
+	-- Gelas kopi lurik / beling di sudut (-2.3, +2.3)
+	local cupPos = centerPos + Vector3.new(-2.3, tableSurfaceY, 2.3)
+	createPart({
+		Name = "TatakanGelas",
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(200, 220, 210),
+		Size = Vector3.new(0.60, 0.04, 0.60),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(cupPos.X, tableSurfaceY + 0.02, cupPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	local gelasKopi = createPart({
+		Name = "GelasKopi",
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(230, 240, 235),
+		Size = Vector3.new(0.45, 0.55, 0.45),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(cupPos.X, tableSurfaceY + 0.30, cupPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "KopiHitam",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(20, 15, 10),
+		Size = Vector3.new(0.4, 0.08, 0.4),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(cupPos.X, tableSurfaceY + 0.50, cupPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+
+	-- Partikel kepulan uap hangat kopi
+	local steamAtt = Instance.new("Attachment")
+	steamAtt.Name = "SteamAttachment"
+	steamAtt.Position = Vector3.new(0, 0.3, 0)
+	steamAtt.Parent = gelasKopi
+
+	local steamEmitter = Instance.new("ParticleEmitter")
+	steamEmitter.Name = "SteamParticle"
+	steamEmitter.Rate = 2
+	steamEmitter.Lifetime = NumberRange.new(1.0, 1.8)
+	steamEmitter.Speed = NumberRange.new(0.3, 0.6)
+	steamEmitter.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.15),
+		NumberSequenceKeypoint.new(0.5, 0.35),
+		NumberSequenceKeypoint.new(1, 0.55),
+	})
+	steamEmitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.8),
+		NumberSequenceKeypoint.new(0.5, 0.5),
+		NumberSequenceKeypoint.new(1, 1.0),
+	})
+	steamEmitter.Color = ColorSequence.new(Color3.fromRGB(220, 220, 220))
+	steamEmitter.Parent = steamAtt
+
+	-- Termos jadul di sudut (+2.3, +2.3)
+	local termosBase = centerPos + Vector3.new(2.3, tableSurfaceY, 2.3)
+	createPart({
+		Name = "TermosBody",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(175, 40, 40),
+		Size = Vector3.new(0.7, 1.2, 0.7),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(termosBase.X, tableSurfaceY + 0.6, termosBase.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "TermosCap",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(220, 220, 220),
+		Size = Vector3.new(0.5, 0.25, 0.5),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(termosBase.X, tableSurfaceY + 1.25, termosBase.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+
+	-- Piring seng blirik gorengan di sudut (+2.3, -2.3)
+	local piringPos = centerPos + Vector3.new(2.3, tableSurfaceY, -2.3)
+	createPart({
+		Name = "PiringSeng",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(235, 235, 230),
+		Size = Vector3.new(1.4, 0.08, 1.4),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(piringPos.X, tableSurfaceY + 0.04, piringPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "PiringSengRim",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(35, 95, 60), -- Lis hijau blirik enamelware
+		Size = Vector3.new(1.44, 0.06, 1.44),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(piringPos.X, tableSurfaceY + 0.06, piringPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		CanCollide = false,
+		Parent = propsFolder,
+	})
+	for gIdx = 1, 3 do
+		createPart({
+			Name = "Gorengan" .. gIdx,
+			Material = Enum.Material.Sand,
+			Color = Color3.fromRGB(210, 150, 45),
+			Size = Vector3.new(0.45, 0.12, 0.35),
+			CFrame = CFrame.new(piringPos.X + (gIdx - 2) * 0.28, tableSurfaceY + 0.14, piringPos.Z + (gIdx % 2) * 0.1) * CFrame.Angles(0, math.rad(gIdx * 35), 0),
+			Parent = propsFolder,
+		})
+	end
+	-- Cabe rawit hijau kecil
+	createPart({
+		Name = "CabeRawit1",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(50, 140, 40),
+		Size = Vector3.new(0.08, 0.24, 0.08),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(piringPos.X + 0.42, tableSurfaceY + 0.12, piringPos.Z - 0.25) * CFrame.Angles(0, math.rad(45), math.rad(90)),
+		CanCollide = false,
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "CabeRawit2",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(50, 140, 40),
+		Size = Vector3.new(0.08, 0.20, 0.08),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(piringPos.X + 0.35, tableSurfaceY + 0.12, piringPos.Z - 0.38) * CFrame.Angles(0, math.rad(-30), math.rad(90)),
+		CanCollide = false,
+		Parent = propsFolder,
+	})
 
 	return tableModel
 end
@@ -605,16 +818,38 @@ function WorldBuilder.Build(): Model
 		Parent = posFolder,
 	})
 
-	-- Atap seng miring khas pos ronda kampung (kemiringan ringan ke arah belakang)
+	-- Atap genteng/seng bertekstur sederhana khas pos ronda kampung (kemiringan ringan ke arah belakang)
 	local roofY = platformTopY + tiangHeight + 0.6
 	createPart({
 		Name = "AtapSeng",
-		Material = Enum.Material.CorrodedMetal,
-		Color = Color3.fromRGB(95, 100, 95),
-		Size = Vector3.new(14.5, 0.3, 14.5),
+		Material = Enum.Material.RoofShingles,
+		Color = Color3.fromRGB(125, 128, 130), -- Tekstur seng/genteng atap pos ronda
+		Size = Vector3.new(14.5, 0.35, 14.5),
 		CFrame = CFrame.new(0, roofY, 0) * CFrame.Angles(math.rad(-6), 0, 0),
 		Parent = posFolder,
 	})
+
+	-- Rangka usuk kayu di bawah atap (terlihat jelas saat pemain mendongak ke atas)
+	for rIdx = -1, 1 do
+		createPart({
+			Name = "UsukAtap" .. (rIdx + 2),
+			Material = Enum.Material.Wood,
+			Color = Color3.fromRGB(80, 55, 32),
+			Size = Vector3.new(12.6, 0.25, 0.35),
+			CFrame = CFrame.new(0, roofY - 0.25, rIdx * 3.8) * CFrame.Angles(math.rad(-6), 0, 0),
+			Parent = posFolder,
+		})
+	end
+	for bIdx = -2, 2 do
+		createPart({
+			Name = "RengAtap" .. (bIdx + 3),
+			Material = Enum.Material.Wood,
+			Color = Color3.fromRGB(80, 55, 32),
+			Size = Vector3.new(0.25, 0.25, 12.6),
+			CFrame = CFrame.new(bIdx * 2.8, roofY - 0.20, 0) * CFrame.Angles(math.rad(-6), 0, 0),
+			Parent = posFolder,
+		})
+	end
 
 	-- Lis tepi atap
 	createPart({
@@ -625,6 +860,33 @@ function WorldBuilder.Build(): Model
 		CFrame = CFrame.new(0, roofY - 0.6, 7.1),
 		Parent = posFolder,
 	})
+
+	-- Papan nama pos ronda di balok ring depan
+	local signBoard = createPart({
+		Name = "PapanNamaPos",
+		Material = Enum.Material.WoodPlanks,
+		Color = Color3.fromRGB(120, 85, 52),
+		Size = Vector3.new(7.2, 1.2, 0.2),
+		CFrame = CFrame.new(0, platformTopY + tiangHeight - 0.3, 5.75),
+		Parent = posFolder,
+	})
+	local signGui = Instance.new("SurfaceGui")
+	signGui.Name = "SignGui"
+	signGui.Face = Enum.NormalId.Back
+	signGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	signGui.PixelsPerStud = 50
+	signGui.Parent = signBoard
+
+	local signLabel = Instance.new("TextLabel")
+	signLabel.Size = UDim2.new(1, 0, 1, 0)
+	signLabel.BackgroundTransparency = 1
+	signLabel.Font = Enum.Font.FredokaOne
+	signLabel.TextSize = 20
+	signLabel.TextColor3 = Color3.fromRGB(245, 235, 210)
+	signLabel.TextStrokeTransparency = 0.2
+	signLabel.TextStrokeColor3 = Color3.fromRGB(40, 25, 15)
+	signLabel.Text = "★ POS RONDA KAMLING RT 03 / RW 05 ★\nSIAGA 24 JAM • GUYUB RUKUN"
+	signLabel.Parent = signGui
 
 	-- Pagar pembatas samping rendah (railing kayu di 2 sisi)
 	createPart({
@@ -920,6 +1182,18 @@ function WorldBuilder.Build(): Model
 		Parent = lampFolder,
 	})
 
+	-- Tudung lampu seng kerucut hijau tua (Iconic Enamel Factory Lampshade)
+	createPart({
+		Name = "TudungLampu",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(34, 68, 48), -- Hijau seng vintage pos ronda
+		Size = Vector3.new(1.35, 0.16, 1.35),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(0, bulbY + 0.08, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		CanCollide = false,
+		Parent = lampFolder,
+	})
+
 	-- Bohlam kaca bulat menyala (Neon)
 	local bulb = createPart({
 		Name = "Bohlam",
@@ -932,12 +1206,12 @@ function WorldBuilder.Build(): Model
 		Parent = lampFolder,
 	})
 
-	-- Sumber cahaya PointLight utama
+	-- Sumber cahaya PointLight utama (kuning hangat pos ronda, nyaman dan tidak menyilaukan)
 	local light = Instance.new("PointLight")
 	light.Name = "MainPointLight"
 	light.Color = Color3.fromRGB(255, 210, 140) -- Kuning hangat 2700K
-	light.Range = 25
-	light.Brightness = 3.5
+	light.Range = 18
+	light.Brightness = 2.0
 	light.Shadows = true
 	light.Parent = bulb
 
@@ -977,6 +1251,51 @@ function WorldBuilder.Build(): Model
 		CFrame = CFrame.new(kentonganCenter.X + 0.3, kentonganCenter.Y - 0.2, kentonganCenter.Z + 0.2) * CFrame.Angles(math.rad(15), 0, math.rad(20)),
 		Parent = propsFolder,
 	})
+	-- Tali ijuk penggantung kentongan ke tiang
+	createPart({
+		Name = "TaliKentongan",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(40, 35, 30),
+		Size = Vector3.new(0.08, 0.6, 0.08),
+		CFrame = CFrame.new(kentonganCenter.X, kentonganCenter.Y + 1.25, kentonganCenter.Z),
+		CanCollide = false,
+		Parent = propsFolder,
+	})
+
+	-- Jam dinding analog jadul di Tiang Pos Ronda
+	local clockPart = createPart({
+		Name = "JamDinding",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(240, 236, 225),
+		Size = Vector3.new(0.85, 0.85, 0.12),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(-5.0, platformTopY + 5.2, 5.0) * CFrame.Angles(0, math.rad(90), math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "JamRim",
+		Material = Enum.Material.Wood,
+		Color = Color3.fromRGB(75, 45, 25),
+		Size = Vector3.new(0.92, 0.92, 0.10),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = clockPart.CFrame * CFrame.new(0, -0.02, 0),
+		CanCollide = false,
+		Parent = propsFolder,
+	})
+	local clockGui = Instance.new("SurfaceGui")
+	clockGui.Name = "ClockGui"
+	clockGui.Face = Enum.NormalId.Top
+	clockGui.PixelsPerStud = 50
+	clockGui.Parent = clockPart
+
+	local clockText = Instance.new("TextLabel")
+	clockText.Size = UDim2.new(1, 0, 1, 0)
+	clockText.BackgroundTransparency = 1
+	clockText.Font = Enum.Font.SpecialElite
+	clockText.TextSize = 13
+	clockText.TextColor3 = Color3.fromRGB(30, 25, 20)
+	clockText.Text = "XII\nIX  •  III\nVI\n00:30"
+	clockText.Parent = clockGui
 
 	-- Papan jadwal ronda di tiang kiri depan (Tiang 3 / 1)
 	local boardPart = createPart({
@@ -1005,73 +1324,10 @@ function WorldBuilder.Build(): Model
 	jadwalText.Parent = surfaceGui
 
 	----------------------------------------------------------------------------
-	-- 8. PROPS MEJA & POS RONDA (Detail & Kehangatan Suasana)
+	-- 8. PROPS POS RONDA SEKITAR (Detail & Kehangatan Suasana)
+	-- Catatan: Tabletop props (GelasKopi, Termos, PiringSeng) kini diinisialisasi
+	-- per-meja di dalam createGaplekTable untuk Meja 1..4.
 	----------------------------------------------------------------------------
-	-- Termos air panas jadul (merah klasik) di sudut meja
-	local termosBase = Vector3.new(2.8, tableSurfaceY, 2.8)
-	createPart({
-		Name = "TermosBody",
-		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(175, 40, 40),
-		Size = Vector3.new(0.7, 1.2, 0.7),
-		Shape = Enum.PartType.Cylinder,
-		CFrame = CFrame.new(termosBase.X, tableSurfaceY + 0.6, termosBase.Z) * CFrame.Angles(0, 0, math.rad(90)),
-		Parent = propsFolder,
-	})
-	createPart({
-		Name = "TermosCap",
-		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(220, 220, 220),
-		Size = Vector3.new(0.5, 0.25, 0.5),
-		Shape = Enum.PartType.Cylinder,
-		CFrame = CFrame.new(termosBase.X, tableSurfaceY + 1.25, termosBase.Z) * CFrame.Angles(0, 0, math.rad(90)),
-		Parent = propsFolder,
-	})
-
-	-- Gelas kopi lurik / beling di sisi pemain 1
-	local cupPos = Vector3.new(-1.6, tableSurfaceY, 3.2)
-	createPart({
-		Name = "GelasKopi",
-		Material = Enum.Material.Glass,
-		Color = Color3.fromRGB(230, 240, 235),
-		Size = Vector3.new(0.45, 0.55, 0.45),
-		Shape = Enum.PartType.Cylinder,
-		CFrame = CFrame.new(cupPos.X, tableSurfaceY + 0.28, cupPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
-		Parent = propsFolder,
-	})
-	createPart({
-		Name = "KopiHitam",
-		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(20, 15, 10),
-		Size = Vector3.new(0.4, 0.08, 0.4),
-		Shape = Enum.PartType.Cylinder,
-		CFrame = CFrame.new(cupPos.X, tableSurfaceY + 0.48, cupPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
-		Parent = propsFolder,
-	})
-
-	-- Piring seng gorengan (tempe / bakwan kuning keemasan)
-	local piringPos = Vector3.new(1.8, tableSurfaceY, -2.8)
-	createPart({
-		Name = "PiringSeng",
-		Material = Enum.Material.Metal,
-		Color = Color3.fromRGB(215, 215, 215),
-		Size = Vector3.new(1.4, 0.08, 1.4),
-		Shape = Enum.PartType.Cylinder,
-		CFrame = CFrame.new(piringPos.X, tableSurfaceY + 0.04, piringPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
-		Parent = propsFolder,
-	})
-	-- 3 Potong gorengan di atas piring
-	for gIdx = 1, 3 do
-		createPart({
-			Name = "Gorengan" .. gIdx,
-			Material = Enum.Material.Sand,
-			Color = Color3.fromRGB(210, 150, 45),
-			Size = Vector3.new(0.45, 0.12, 0.35),
-			CFrame = CFrame.new(piringPos.X + (gIdx - 2) * 0.28, tableSurfaceY + 0.14, piringPos.Z + (gIdx % 2) * 0.1) * CFrame.Angles(0, math.rad(gIdx * 35), 0),
-			Parent = propsFolder,
-		})
-	end
-
 	-- Sarung tersampir di sandaran bale-bale
 	createPart({
 		Name = "SarungKotak",
@@ -1108,6 +1364,35 @@ function WorldBuilder.Build(): Model
 		Color = Color3.fromRGB(180, 180, 180),
 		Size = Vector3.new(0.05, 0.9, 0.05),
 		CFrame = CFrame.new(radioPos.X + 0.3, radioPos.Y + 0.6, radioPos.Z - 0.1) * CFrame.Angles(0, 0, math.rad(-15)),
+		Parent = propsFolder,
+	})
+
+	-- Senter ronda besi jadul di ujung bale-bale
+	local senterBody = createPart({
+		Name = "SenterRondaBody",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(175, 45, 40), -- Merah besi senter ronda jadul
+		Size = Vector3.new(0.35, 1.3, 0.35),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(-4.2, baleY + 0.35, 3.2) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SenterHead",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(200, 200, 200),
+		Size = Vector3.new(0.55, 0.32, 0.55),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = senterBody.CFrame * CFrame.new(0, 0.75, 0),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SenterLens",
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(240, 245, 255),
+		Size = Vector3.new(0.48, 0.05, 0.48),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = senterBody.CFrame * CFrame.new(0, 0.92, 0),
 		Parent = propsFolder,
 	})
 
@@ -1161,6 +1446,209 @@ function WorldBuilder.Build(): Model
 	smoke.SpreadAngle = Vector2.new(15, 15)
 	smoke.Acceleration = Vector3.new(0.1, 0.3, 0.05)
 	smoke.Parent = bara
+
+	-- Lentera badai / petromaks gantung di tiang depan Pos Ronda
+	local lanternPos = Vector3.new(5.2, 5.8, 5.2)
+	createPart({
+		Name = "PetromaksTop",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(55, 60, 50),
+		Size = Vector3.new(0.65, 0.25, 0.65),
+		CFrame = CFrame.new(lanternPos),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "PetromaksGlass",
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(255, 230, 180),
+		Transparency = 0.4,
+		Size = Vector3.new(0.5, 0.6, 0.5),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(lanternPos.X, lanternPos.Y - 0.4, lanternPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	local lanternMantle = createPart({
+		Name = "PetromaksMantle",
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 210, 120),
+		Size = Vector3.new(0.2, 0.25, 0.2),
+		Shape = Enum.PartType.Ball,
+		CFrame = CFrame.new(lanternPos.X, lanternPos.Y - 0.4, lanternPos.Z),
+		Parent = propsFolder,
+	})
+	local lanternLight = Instance.new("PointLight")
+	lanternLight.Name = "PetromaksLight"
+	lanternLight.Color = Color3.fromRGB(255, 195, 110)
+	lanternLight.Brightness = 1.2
+	lanternLight.Range = 14
+	lanternLight.Shadows = false
+	lanternLight.Parent = lanternMantle
+	createPart({
+		Name = "PetromaksBase",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(55, 60, 50),
+		Size = Vector3.new(0.7, 0.35, 0.7),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = CFrame.new(lanternPos.X, lanternPos.Y - 0.85, lanternPos.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "PetromaksHandle",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(80, 80, 80),
+		Size = Vector3.new(0.06, 0.7, 0.06),
+		CFrame = CFrame.new(lanternPos.X, lanternPos.Y + 0.45, lanternPos.Z),
+		Parent = propsFolder,
+	})
+
+	-- Papan Jadwal Ronda Kamling di dinding belakang pos
+	local boardPos = Vector3.new(1.8, platformTopY + 2.8, -5.8)
+	createPart({
+		Name = "PapanJadwalFrame",
+		Material = Enum.Material.Wood,
+		Color = Color3.fromRGB(90, 60, 35),
+		Size = Vector3.new(3.8, 2.4, 0.15),
+		CFrame = CFrame.new(boardPos),
+		Parent = propsFolder,
+	})
+	local jadwalBlackboard = createPart({
+		Name = "PapanJadwalBoard",
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(30, 36, 32),
+		Size = Vector3.new(3.5, 2.1, 0.16),
+		CFrame = CFrame.new(boardPos.X, boardPos.Y, boardPos.Z + 0.02),
+		Parent = propsFolder,
+	})
+	local jadwalGui = Instance.new("SurfaceGui")
+	jadwalGui.Face = Enum.NormalId.Front
+	jadwalGui.CanvasSize = Vector2.new(350, 210)
+	jadwalGui.Parent = jadwalBlackboard
+	local jTitle = Instance.new("TextLabel")
+	jTitle.Size = UDim2.new(1, 0, 0, 36)
+	jTitle.BackgroundTransparency = 1
+	jTitle.Text = "JADWAL RONDA KAMLING"
+	jTitle.TextColor3 = Color3.fromRGB(240, 235, 210)
+	jTitle.Font = Enum.Font.FredokaOne
+	jTitle.TextSize = 20
+	jTitle.Parent = jadwalGui
+	local jList = Instance.new("TextLabel")
+	jList.Position = UDim2.new(0, 16, 0, 40)
+	jList.Size = UDim2.new(1, -32, 1, -44)
+	jList.BackgroundTransparency = 1
+	jList.Text = "SENIN : PAK RT & JOKO\nSELASA : ASEP & UDIN\nRABU : FAHRY & TEAM\nKAMIS : MAS BEJO & SLAMET\nJUMAT : RONDA AKBAR\nSIAGA 24 JAM • GUYUB RUKUN"
+	jList.TextColor3 = Color3.fromRGB(215, 225, 205)
+	jList.Font = Enum.Font.SourceSansBold
+	jList.TextSize = 14
+	jList.TextXAlignment = Enum.TextXAlignment.Left
+	jList.Parent = jadwalGui
+
+	-- Sepeda onthel tua bersandar di samping tiang kiri pos ronda
+	local bikeCenter = Vector3.new(-6.2, platformTopY + 1.2, 4.2)
+	local bikeAngle = CFrame.new(bikeCenter) * CFrame.Angles(0, math.rad(18), math.rad(10))
+	createPart({
+		Name = "SepedaRodaDepan",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(35, 35, 35),
+		Size = Vector3.new(1.8, 0.12, 1.8),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = bikeAngle * CFrame.new(0, -0.2, 1.5) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaRodaBelakang",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(35, 35, 35),
+		Size = Vector3.new(1.8, 0.12, 1.8),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = bikeAngle * CFrame.new(0, -0.2, -1.5) * CFrame.Angles(0, 0, math.rad(90)),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaFrameBawah",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(40, 55, 45),
+		Size = Vector3.new(0.12, 0.12, 2.9),
+		CFrame = bikeAngle * CFrame.new(0, -0.15, 0),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaFrameAtas",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(40, 55, 45),
+		Size = Vector3.new(0.12, 0.12, 2.7),
+		CFrame = bikeAngle * CFrame.new(0, 0.75, 0),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaTiangSadel",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(40, 55, 45),
+		Size = Vector3.new(0.12, 1.3, 0.12),
+		CFrame = bikeAngle * CFrame.new(0, 0.4, -0.5) * CFrame.Angles(math.rad(15), 0, 0),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaSadel",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(90, 50, 25),
+		Size = Vector3.new(0.5, 0.15, 0.7),
+		CFrame = bikeAngle * CFrame.new(0, 1.1, -0.65),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaStang",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(180, 180, 180),
+		Size = Vector3.new(1.4, 0.1, 0.1),
+		CFrame = bikeAngle * CFrame.new(0, 1.35, 1.4),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "SepedaLampuDinamo",
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(190, 190, 190),
+		Size = Vector3.new(0.3, 0.35, 0.3),
+		Shape = Enum.PartType.Cylinder,
+		CFrame = bikeAngle * CFrame.new(0, 1.15, 1.6) * CFrame.Angles(math.rad(90), 0, 0),
+		Parent = propsFolder,
+	})
+
+	-- Kucing kampung oranye tidur melingkar di tikar pojok pos
+	local catCenter = Vector3.new(-4.8, platformTopY, -4.6)
+	createPart({
+		Name = "TikarKucing",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(150, 130, 95),
+		Size = Vector3.new(1.4, 0.03, 1.4),
+		CFrame = CFrame.new(catCenter.X, platformTopY + 0.015, catCenter.Z),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "KucingBadan",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(215, 130, 55),
+		Size = Vector3.new(0.65, 0.35, 0.55),
+		Shape = Enum.PartType.Ball,
+		CFrame = CFrame.new(catCenter.X, platformTopY + 0.20, catCenter.Z),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "KucingKepala",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(225, 140, 60),
+		Size = Vector3.new(0.35, 0.35, 0.35),
+		Shape = Enum.PartType.Ball,
+		CFrame = CFrame.new(catCenter.X + 0.28, platformTopY + 0.18, catCenter.Z - 0.15),
+		Parent = propsFolder,
+	})
+	createPart({
+		Name = "KucingEkor",
+		Material = Enum.Material.Fabric,
+		Color = Color3.fromRGB(195, 115, 45),
+		Size = Vector3.new(0.12, 0.12, 0.65),
+		CFrame = CFrame.new(catCenter.X - 0.25, platformTopY + 0.10, catCenter.Z + 0.2) * CFrame.Angles(0, math.rad(45), 0),
+		Parent = propsFolder,
+	})
 
 	----------------------------------------------------------------------------
 	-- 9. LINGKUNGAN GANG KAMPUNG (Tembok, Rumah Tetangga, Pohon Pisang, Tiang Listrik)
@@ -1226,36 +1714,88 @@ function WorldBuilder.Build(): Model
 		Parent = envFolder,
 	})
 
-	-- Pohon pisang sederhana di sudut samping
-	local bananaBase = Vector3.new(8.5, 0.5, -8.5)
+	-- Pohon pisang kampung di pekarangan samping (tegak di tanah di luar pos ronda)
+	local bananaBase = Vector3.new(12.0, 0, -4.0)
+	createPart({
+		Name = "BananaMound",
+		Material = Enum.Material.Ground,
+		Color = Color3.fromRGB(55, 45, 32),
+		Size = Vector3.new(2.4, 0.35, 2.4),
+		CFrame = CFrame.new(bananaBase.X, 0.175, bananaBase.Z),
+		Parent = envFolder,
+	})
 	createPart({
 		Name = "BatangPisang",
 		Material = Enum.Material.Wood,
 		Color = Color3.fromRGB(75, 110, 60),
-		Size = Vector3.new(1.0, 7.0, 1.0),
+		Size = Vector3.new(6.0, 0.9, 0.9), -- X adalah panjang cylinder di Roblox, Y & Z adalah diameter
 		Shape = Enum.PartType.Cylinder,
-		CFrame = CFrame.new(bananaBase.X, 4.0, bananaBase.Z) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame = CFrame.new(bananaBase.X, 3.0, bananaBase.Z) * CFrame.Angles(0, 0, math.rad(90)),
 		Parent = envFolder,
 	})
-	-- 4 Daun pisang lebar
-	local leafAngles = { 0, 90, 180, 270 }
-	for lIdx, angleDeg in ipairs(leafAngles) do
+	-- 5 Pelepah daun pisang melengkung alami menempel ke ujung batang
+	local leafConfigs = {
+		{ angle = 20,  length = 3.8, droop = -42, yOff = 5.8 },
+		{ angle = 95,  length = 3.5, droop = -45, yOff = 5.7 },
+		{ angle = 170, length = 4.0, droop = -40, yOff = 5.8 },
+		{ angle = 245, length = 3.6, droop = -44, yOff = 5.7 },
+		{ angle = 315, length = 3.7, droop = -42, yOff = 5.8 },
+	}
+	for lIdx, lc in ipairs(leafConfigs) do
+		local radA = math.rad(lc.angle)
+		local radD = math.rad(lc.droop)
+		local leafCF = CFrame.new(bananaBase.X, lc.yOff, bananaBase.Z)
+			* CFrame.Angles(0, radA, 0)
+			* CFrame.Angles(radD, 0, 0)
+			* CFrame.new(0, 0, -lc.length / 2)
 		createPart({
 			Name = "DaunPisang" .. lIdx,
 			Material = Enum.Material.Grass,
-			Color = Color3.fromRGB(45, 115, 40),
-			Size = Vector3.new(1.2, 0.1, 4.2),
-			CFrame = CFrame.new(bananaBase.X, 7.2, bananaBase.Z) * CFrame.Angles(math.rad(-25), math.rad(angleDeg), 0),
+			Color = Color3.fromRGB(42, 108, 38),
+			Size = Vector3.new(1.1, 0.08, lc.length),
+			CFrame = leafCF,
 			Parent = envFolder,
 		})
 	end
 
-	-- Konfigurasi SpawnLocation agar pemain muncul di pelataran depan Pos Ronda (menghadap pintu masuk)
-	local defaultSpawn = workspace:FindFirstChildOfClass("SpawnLocation")
-	if defaultSpawn then
-		defaultSpawn.CFrame = CFrame.new(0, 1.25, 14) * CFrame.Angles(0, math.rad(180), 0)
-		defaultSpawn.Size = Vector3.new(8, 0.5, 8)
-		defaultSpawn.Enabled = true
+	-- Pagar sasak bambu pembatas pekarangan samping (X = -10.5, Z = -10 .. 10)
+	local fenceX = -10.5
+	for fZ = -10, 10, 2.5 do
+		createPart({
+			Name = "PagarBambuTiang",
+			Material = Enum.Material.Wood,
+			Color = Color3.fromRGB(135, 110, 70),
+			Size = Vector3.new(0.25, 3.2, 0.25),
+			CFrame = CFrame.new(fenceX, 1.8, fZ),
+			Parent = envFolder,
+		})
+	end
+	local fenceRails = { 0.8, 1.8, 2.8 }
+	for _, rY in ipairs(fenceRails) do
+		createPart({
+			Name = "PagarBambuRail",
+			Material = Enum.Material.Wood,
+			Color = Color3.fromRGB(145, 120, 78),
+			Size = Vector3.new(0.15, 0.18, 22),
+			CFrame = CFrame.new(fenceX, rY, 0),
+			Parent = envFolder,
+		})
+	end
+
+	-- Konfigurasi SpawnLocation agar pemain muncul di pelataran depan Pos Ronda (menghadap langsung ke pintu pos ronda)
+	-- Menghapus decal bintang default Roblox dan membuat spawn pad transparan agar tanah bersih
+	for _, desc in ipairs(workspace:GetDescendants()) do
+		if desc:IsA("SpawnLocation") then
+			desc.CFrame = CFrame.lookAt(Vector3.new(0, 0.52, 14), Vector3.new(0, 0.52, 0))
+			desc.Transparency = 1.0
+			desc.CanCollide = false
+			desc.Enabled = true
+			for _, ch in ipairs(desc:GetChildren()) do
+				if ch:IsA("Decal") then
+					ch:Destroy()
+				end
+			end
+		end
 	end
 
 	root.Parent = workspace
